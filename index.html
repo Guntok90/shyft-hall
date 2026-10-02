@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>shyft studio</title>
+<meta name="description" content="shyft studio baut KI-Systeme für Hotels und Tourismus. Aus Tirol.">
+<meta name="theme-color" content="#0B0A09">
+<link rel="icon" href="/favicon.png">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<a class="skip" href="#analyse">Zur Analyse</a>
+<canvas id="view" aria-label="Halle von shyft. In der Mitte dreht sich die Marke. Um sie liegen ein Schlüssel, ein Buch und ein Brief."></canvas>
+<p class="sr">Ihr steht in einer Halle. In der Mitte dreht sich die Marke von shyft. Um sie auf dem Boden liegen ein Schlüssel, ein Buch und ein Brief. Tritt man nah heran, erscheint ein Satz.</p>
+<p class="sr" id="piece-line" aria-live="polite"></p>
+
+<header class="top">
+  <a class="word" href="/">shyft</a>
+  <p class="where">tirol</p>
+</header>
+
+<footer class="bottom">
+  <p class="line">Arbeitsabläufe und Vermarktung.<br>Gebaut für Hotels und Tourismus.</p>
+  <div class="action">
+    <a class="analyse" id="analyse" href="mailto:hallo@shyftstudio.at?subject=Kostenlose%20Analyse">Kostenlose Analyse</a>
+    <p class="micro">15 Minuten · unverbindlich</p>
+  </div>
+</footer>
+
+<p class="hint" id="hint">Ziehen zum Schauen · WASD zum Gehen</p>
+<div class="stick" id="stick" hidden><i></i></div>
+
+<div class="curtain" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+<img class="still" src="/hero.png" alt="">
+<p class="fail" hidden>Die Halle konnte nicht geladen werden.</p>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
