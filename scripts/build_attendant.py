@@ -1,6 +1,4 @@
-"""Previous plated figure. The hall builds the host in src/attendant.js.
-
-This script still exports public/models/attendant.glb, which the hall does not load.
+"""Stylized hero attendant. The hall loads public/models/attendant.glb from src/host.js.
 
 Blender Z-up. The face points down -Y. The glTF exporter maps that to +Z,
 which is the face the hall turns toward the visitor.
@@ -309,7 +307,7 @@ def world_bbox(objects):
     return low, high
 
 
-def place_emblem(rig, back_y):
+def place_emblem(rig, back_y, height_z=1.30):
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=LOGO)
     imported = [obj for obj in bpy.data.objects if obj not in before]
@@ -333,7 +331,7 @@ def place_emblem(rig, back_y):
     shift = Vector((
         -(low.x + high.x) * 0.5,
         back_y - high.y,
-        1.355 - (low.z + high.z) * 0.5,
+        height_z - (low.z + high.z) * 0.5,
     ))
     for obj in meshes:
         bm = bmesh.new()
@@ -404,7 +402,140 @@ def build_hand(side, wrist, rig):
     adopt(sphere(f"thumb_j_{side}", tuple(thumb_b), 0.0065, "joint"), rig)
 
 
+def build_hero(rig, head):
+    """Stylized person: helmeted face, broad shoulders, chest, hands. Face is -Y."""
+
+    def put(obj, parent):
+        adopt(obj, parent)
+        return obj
+
+    put(lathe(
+        "torso",
+        [
+            (0.06, 0.90),
+            (0.115, 0.98),
+            (0.100, 1.08),
+            (0.128, 1.22),
+            (0.155, 1.36),
+            (0.142, 1.50),
+            (0.086, 1.57),
+            (0.052, 1.63),
+        ],
+        "umber",
+    ), rig)
+
+    for side in (-1, 1):
+        x = side * 0.125
+        put(plate(f"boot_{side}", (0.12, 0.27, 0.078), (x, -0.035, 0.05), finish="umber", bevel=0.006, segments=3), rig)
+        put(plate(f"toe_{side}", (0.10, 0.085, 0.044), (x, -0.155, 0.06), finish="cream", bevel=0.004), rig)
+        put(plate(f"sole_{side}", (0.13, 0.31, 0.016), (x, -0.045, 0.012), finish="gold", bevel=0.002), rig)
+        put(ring(f"ankle_{side}", (x, -0.012, 0.125), 0.054, 0.007, finish="gold"), rig)
+        put(cylinder_between(f"shin_{side}", (x, 0.0, 0.17), (x, -0.012, 0.50), 0.048, "cream"), rig)
+        put(plate(f"shin_plate_{side}", (0.022, 0.014, 0.26), (x, -0.055, 0.34), finish="olive", bevel=0.002), rig)
+        put(plate(f"shin_stripe_{side}", (0.06, 0.01, 0.028), (x, -0.058, 0.42), finish="teal", bevel=0.0015), rig)
+        put(sphere(f"knee_{side}", (x, -0.012, 0.53), 0.06, "joint"), rig)
+        put(ring(f"knee_ring_{side}", (x, -0.012, 0.53), 0.064, 0.008, finish="gold"), rig)
+        put(plate(f"knee_guard_{side}", (0.075, 0.022, 0.075), (x, -0.068, 0.54), finish="cream", bevel=0.003), rig)
+        put(cylinder_between(f"thigh_{side}", (x, 0.0, 0.60), (x * 0.92, 0.0, 1.02), 0.07, "umber"), rig)
+        put(plate(f"thigh_plate_{side}", (0.034, 0.016, 0.32), (x + side * 0.015, -0.06, 0.82), finish="cream", bevel=0.003), rig)
+
+    put(plate("pelvis", (0.32, 0.18, 0.15), (0.0, 0.0, 1.00), finish="umber", bevel=0.008, segments=3), rig)
+    put(ring("belt", (0.0, 0.0, 1.08), 0.155, 0.013, finish="gold"), rig)
+    put(plate("buckle", (0.055, 0.02, 0.042), (0.0, -0.155, 1.08), finish="teal", bevel=0.002), rig)
+    put(plate("abdomen", (0.26, 0.16, 0.16), (0.0, -0.015, 1.19), finish="olive", bevel=0.006), rig)
+    put(plate("ab_line", (0.20, 0.012, 0.012), (0.0, -0.10, 1.19), finish="gold", bevel=0.0015), rig)
+
+    put(arc_shell("chest", 0.185, 0.30, 1.40, 128, 0, 0.014, "cream", 0.003), rig)
+    put(plate("sternum", (0.016, 0.016, 0.18), (0.0, -0.175, 1.42), finish="gold", bevel=0.002), rig)
+    for side in (-1, 1):
+        put(plate(f"window_{side}", (0.09, 0.016, 0.11), (side * 0.062, -0.188, 1.44), finish="teal", bevel=0.003), rig)
+        put(plate(f"frame_{side}", (0.104, 0.01, 0.124), (side * 0.062, -0.178, 1.44), finish="gold", bevel=0.002), rig)
+    put(ring("collar", (0.0, 0.0, 1.56), 0.095, 0.012, finish="teal"), rig)
+    place_emblem(rig, -0.19, 1.28)
+
+    for side in (-1, 1):
+        sx = side * 0.25
+        put(sphere(f"shoulder_{side}", (sx, -0.02, 1.50), 0.072, "gold"), rig)
+        put(sphere(
+            f"pauldron_{side}",
+            (sx + side * 0.04, -0.03, 1.54),
+            0.09,
+            "terracotta",
+            scale=(1.25, 0.95, 0.7),
+        ), rig)
+        put(plate(
+            f"pauldron_trim_{side}",
+            (0.18, 0.035, 0.018),
+            (sx + side * 0.06, -0.09, 1.50),
+            rot=(0.45, 0.0, side * 0.25),
+            finish="gold",
+            bevel=0.002,
+        ), rig)
+        shoulder = Vector((sx, -0.02, 1.46))
+        elbow = Vector((sx + side * 0.055, -0.055, 1.15))
+        wrist = Vector((sx + side * 0.035, -0.075, 0.90))
+        put(cylinder_between(f"upper_{side}", shoulder, elbow, 0.044, "olive"), rig)
+        put(sphere(f"elbow_{side}", tuple(elbow), 0.046, "joint"), rig)
+        put(ring(f"elbow_ring_{side}", elbow, 0.05, 0.007, finish="gold"), rig)
+        put(cylinder_between(f"fore_{side}", elbow, wrist, 0.036, "cream"), rig)
+        put(plate(
+            f"cuff_{side}",
+            (0.06, 0.042, 0.032),
+            (wrist.x, wrist.y - 0.012, wrist.z + 0.012),
+            finish="teal",
+            bevel=0.002,
+        ), rig)
+        build_hand(side, wrist, rig)
+
+    for index, z in enumerate((1.59, 1.61, 1.63)):
+        put(ring(f"neck_{index}", (0.0, 0.0, z), 0.058, 0.0065, finish="gold" if index != 1 else "joint"), rig)
+
+    put(lathe(
+        "skull",
+        [
+            (0.035, 1.60),
+            (0.078, 1.64),
+            (0.105, 1.70),
+            (0.112, 1.76),
+            (0.090, 1.82),
+            (0.045, 1.87),
+            (0.012, 1.90),
+        ],
+        "cream",
+    ), head)
+    put(arc_shell("helm", 0.132, 0.22, 1.74, 230, 180, 0.01, "umber", 0.0022), head)
+    put(arc_shell("crown", 0.118, 0.07, 1.86, 260, 180, 0.009, "umber", 0.002), head)
+    put(arc_shell("brow", 0.125, 0.028, 1.80, 150, 0, 0.008, "olive", 0.0016), head)
+    put(plate("crest", (0.016, 0.04, 0.09), (0.0, 0.02, 1.96), finish="gold", bevel=0.002), head)
+    put(plate("mouth", (0.062, 0.012, 0.016), (0.0, -0.112, 1.665), finish="gold", bevel=0.002), head)
+    put(plate("mouth_slot", (0.042, 0.008, 0.006), (0.0, -0.120, 1.670), finish="joint", bevel=0.001), head)
+    # Forward face point. Measured after export to confirm the face meets the visitor.
+    put(sphere("nose", (0.0, -0.118, 1.715), 0.012, "cream", scale=(0.7, 0.55, 0.9)), head)
+    for side in (-1, 1):
+        put(sphere(
+            f"lens_{'r' if side > 0 else 'l'}",
+            (side * 0.038, -0.108, 1.755),
+            0.016,
+            "lens",
+            scale=(1.15, 0.45, 0.85),
+        ), head)
+        put(cylinder_between(
+            f"antenna_{side}",
+            (side * 0.09, 0.02, 1.86),
+            (side * 0.13, 0.06, 2.02),
+            0.006,
+            "gold",
+            verts=10,
+        ), head)
+        put(sphere(f"antenna_tip_{side}", (side * 0.13, 0.06, 2.02), 0.012, "teal"), head)
+
+
 def build():
+    if os.environ.get("SHYFT_REBUILD_HERO") != "1":
+        raise SystemExit(
+            "public/models/attendant.glb is the mounted figure. "
+            "Set SHYFT_REBUILD_HERO=1 to rebuild the old hero instead."
+        )
     global MATS
     clear_scene()
     MATS = make_materials()
@@ -414,219 +545,21 @@ def build():
 
     attendant = empty("attendant")
     rig = empty("rig", attendant)
-    head = empty("head", rig, (0.0, 0.0, 1.54))
+    # Neck pivot. Head meshes hang off this so a look-turn does not move the body.
+    # Face is -Y. A visitor in the hall, after glTF export, meets +Z.
+    head = empty("head", rig, (0.0, 0.0, 1.62))
     bpy.context.view_layer.update()
 
-    suit = lathe(
-        "suit",
-        [
-            (0.02, 0.84),
-            (0.09, 0.90),
-            (0.112, 0.98),
-            (0.10, 1.06),
-            (0.084, 1.15),
-            (0.098, 1.26),
-            (0.108, 1.38),
-            (0.10, 1.48),
-            (0.055, 1.55),
-            (0.04, 1.60),
-        ],
-        "umber",
-    )
-    adopt(suit, rig)
+    build_hero(rig, head)
 
-    # Gold sits 4 mm inside a shorter outer plate, so only the rim shows.
-    chest_r = 0.116
-    chest_t = 0.008
-    adopt(arc_shell("chest_rim", chest_r - 0.004, 0.214, 1.36, 116, 0, 0.005, "gold", 0.0014), rig)
-    adopt(arc_shell("chest", chest_r, 0.196, 1.36, 104, 0, chest_t, "cream", 0.0022), rig)
-    adopt(arc_shell("abdomen_rim", 0.098, 0.156, 1.16, 130, 0, 0.004, "gold", 0.0014), rig)
-    adopt(arc_shell("abdomen", 0.102, 0.138, 1.16, 118, 0, 0.007, "olive", 0.002), rig)
-    adopt(arc_shell("side_r", 0.110, 0.30, 1.30, 36, 78, 0.006, "olive"), rig)
-    adopt(arc_shell("side_l", 0.110, 0.30, 1.30, 36, -78, 0.006, "olive"), rig)
-    adopt(arc_shell("back", 0.108, 0.34, 1.30, 90, 180, 0.006, "umber"), rig)
-    for index, z in enumerate((1.22, 1.30, 1.38)):
-        ridge = plate(
-            f"spine_{index}",
-            (0.018, 0.012, 0.055),
-            (0.0, 0.124, z),
-            finish="teal" if index == 1 else "gold",
-            bevel=0.0016,
-        )
-        adopt(ridge, rig)
-    adopt(arc_shell("hem", 0.124, 0.12, 0.96, 230, 0, 0.009, "terracotta", 0.0022), rig)
-
-    adopt(arc_shell("collar", 0.078, 0.062, 1.545, 230, 180, 0.007, "teal", 0.0018), rig)
-    ascot = plate("ascot", (0.055, 0.016, 0.07), (0.0, -0.09, 1.50), rot=(0.35, 0.0, 0.0), finish="teal", bevel=0.002)
-    adopt(ascot, rig)
-    for index, z in enumerate((1.505, 1.528, 1.55)):
-        adopt(ring(f"neck_{index}", (0.0, 0.0, z), 0.046, 0.0055, finish="gold" if index != 1 else "joint"), rig)
-
-    belt = ring("belt", (0.0, 0.0, 1.045), 0.118, 0.008, finish="umber")
-    adopt(belt, rig)
-    pip_colors = ("teal", "cream", "olive", "terracotta", "umber")
-    for index, finish in enumerate(pip_colors):
-        pip = plate(
-            f"pip_{finish}",
-            (0.012, 0.008, 0.016),
-            (-0.028 + index * 0.014, -0.122, 1.045),
-            finish=finish,
-            bevel=0.0012,
-        )
-        adopt(pip, rig)
-
-    place_emblem(rig, -(chest_r + chest_t) - 0.001)
-
-    # Head. Pivot is the neck empty; these meshes are parented to it.
-    skull = lathe(
-        "skull",
-        [
-            (0.012, 1.555),
-            (0.055, 1.575),
-            (0.086, 1.61),
-            (0.10, 1.66),
-            (0.098, 1.72),
-            (0.07, 1.775),
-            (0.02, 1.808),
-        ],
-        "cream",
-    )
-    adopt(skull, head)
-    adopt(arc_shell("rear_skull", 0.103, 0.16, 1.68, 120, 180, 0.006, "umber", 0.0016), head)
-    adopt(arc_shell("visor", 0.106, 0.036, 1.662, 140, 0, 0.007, "teal", 0.0016), head)
-    adopt(arc_shell("glass", 0.110, 0.016, 1.660, 110, 0, 0.0035, "joint", 0.001), head)
-    for side in (-1, 1):
-        lens = sphere(f"lens_{'r' if side > 0 else 'l'}", (side * 0.03, -0.112, 1.661), 0.009, "lens", scale=(1.0, 0.5, 1.0))
-        adopt(lens, head)
-        ear = cylinder_between(
-            f"ear_{side}",
-            (side * 0.095, 0.0, 1.665),
-            (side * 0.112, 0.0, 1.665),
-            0.016,
-            "gold",
-            verts=16,
-        )
-        adopt(ear, head)
-        temple = plate(
-            f"temple_{side}",
-            (0.01, 0.02, 0.028),
-            (side * 0.1, -0.03, 1.70),
-            finish="olive",
-            bevel=0.0014,
-        )
-        adopt(temple, head)
-    brow = plate("brow", (0.09, 0.016, 0.012), (0.0, -0.1, 1.688), rot=(0.25, 0.0, 0.0), finish="olive", bevel=0.0014)
-    adopt(brow, head)
-    for index, z in enumerate((1.628, 1.620, 1.612)):
-        width = 0.034 if index == 1 else 0.024
-        mouth = plate(
-            "nose" if index == 1 else f"mouth_{index}",
-            (width, 0.008, 0.0045),
-            (0.0, -0.112, z),
-            finish="joint",
-            bevel=0.0008,
-        )
-        adopt(mouth, head)
-
-    # Legs.
-    for side in (-1, 1):
-        x = side * 0.09
-        adopt(cylinder_between(f"thigh_{side}", (x, 0.0, 1.02), (x, 0.0, 0.52), 0.054, "umber"), rig)
-        adopt(cylinder_between(f"shin_{side}", (x, 0.0, 0.48), (x, 0.005, 0.10), 0.042, "olive"), rig)
-        adopt(
-            plate(
-                f"thigh_panel_{side}",
-                (0.01, 0.036, 0.30),
-                (x + side * 0.05, -0.012, 0.76),
-                finish="cream",
-                bevel=0.0018,
-            ),
-            rig,
-        )
-        adopt(
-            plate(
-                f"shin_panel_{side}",
-                (0.014, 0.01, 0.24),
-                (x, -0.048, 0.30),
-                finish="cream",
-                bevel=0.0016,
-            ),
-            rig,
-        )
-        adopt(sphere(f"knee_{side}", (x, 0.0, 0.50), 0.05, "joint"), rig)
-        adopt(ring(f"knee_ring_{side}", (x, 0.0, 0.50), 0.052, 0.007, finish="gold"), rig)
-        guard = plate(
-            f"knee_guard_{side}",
-            (0.04, 0.012, 0.05),
-            (x, -0.048, 0.50),
-            finish="cream",
-            bevel=0.002,
-        )
-        adopt(guard, rig)
-        adopt(ring(f"ankle_{side}", (x, 0.008, 0.105), 0.046, 0.006, finish="gold"), rig)
-        boot = plate(
-            f"boot_{side}",
-            (0.088, 0.20, 0.07),
-            (x, -0.02, 0.045),
-            finish="umber",
-            bevel=0.006,
-            segments=3,
-        )
-        adopt(boot, rig)
-        toe = plate(
-            f"toe_{side}",
-            (0.078, 0.07, 0.032),
-            (x, -0.105, 0.055),
-            finish="cream",
-            bevel=0.004,
-        )
-        adopt(toe, rig)
-        welt = plate(
-            f"welt_{side}",
-            (0.096, 0.214, 0.012),
-            (x, -0.02, 0.012),
-            finish="gold",
-            bevel=0.002,
-        )
-        adopt(welt, rig)
-
-    # Arms and hands. Palms face the thighs so the visitor sees the back of the hand.
-    for side in (-1, 1):
-        shoulder = Vector((side * 0.175, -0.012, 1.45))
-        elbow = Vector((side * 0.23, -0.03, 1.18))
-        wrist = Vector((side * 0.25, -0.05, 0.96))
-        adopt(sphere(f"shoulder_{side}", shoulder, 0.046, "gold"), rig)
-        cap = sphere(
-            f"pauldron_{side}",
-            (shoulder.x, shoulder.y - 0.008, shoulder.z + 0.012),
-            0.058,
-            "cream",
-            scale=(1.25, 0.8, 0.62),
-        )
-        adopt(cap, rig)
-        adopt(cylinder_between(f"upper_{side}", shoulder, elbow, 0.036, "olive"), rig)
-        adopt(sphere(f"elbow_{side}", elbow, 0.038, "joint"), rig)
-        adopt(ring(f"elbow_ring_{side}", elbow, 0.04, 0.006, finish="gold"), rig)
-        adopt(cylinder_between(f"fore_{side}", elbow, wrist, 0.03, "cream"), rig)
-        adopt(
-            plate(
-                f"cuff_{side}",
-                (0.05, 0.04, 0.028),
-                (wrist.x, wrist.y - 0.01, wrist.z + 0.02),
-                finish="teal",
-                bevel=0.002,
-            ),
-            rig,
-        )
-        build_hand(side, wrist, rig)
 
     # Realize modifiers, then join meshes that share a finish and a rig parent.
     meshes = [obj for obj in bpy.data.objects if obj.type == "MESH"]
     roles = {obj.name: group_of(obj) for obj in meshes}
     for obj in meshes:
         realize(obj)
-    if "suit" in bpy.data.objects:
-        outward_check(bpy.data.objects["suit"])
+    if "torso" in bpy.data.objects:
+        outward_check(bpy.data.objects["torso"])
     if "skull" in bpy.data.objects:
         outward_check(bpy.data.objects["skull"])
 
@@ -694,6 +627,12 @@ def build():
         export_skins=False,
     )
     print(f"wrote {OUT}")
+    blend_path = os.path.join(ROOT, "attendant.blend")
+    try:
+        bpy.ops.wm.save_as_mainfile(filepath=blend_path)
+        print(f"wrote {blend_path}")
+    except RuntimeError as exc:
+        print("blend save", exc)
 
 
 def outward_check(obj):

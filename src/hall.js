@@ -32,34 +32,9 @@ function stone(color, roughness, metalness = 0) {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness });
 }
 
-function etch(text) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 2048;
-  canvas.height = 320;
-  const g = canvas.getContext("2d");
-  g.clearRect(0, 0, canvas.width, canvas.height);
-  g.fillStyle = "#F3E6D4";
-  g.font = '500 168px "Space Grotesk", sans-serif';
-  g.textBaseline = "middle";
-  const chars = [...text];
-  const gap = 28;
-  const widths = chars.map((ch) => g.measureText(ch).width);
-  const total = widths.reduce((a, b) => a + b, 0) + gap * (chars.length - 1);
-  let x = (canvas.width - total) / 2;
-  const y = canvas.height / 2 + 8;
-  for (let i = 0; i < chars.length; i++) {
-    g.fillText(chars[i], x, y);
-    x += widths[i] + gap;
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
-  return tex;
-}
-
 export function buildHall(scene) {
   scene.background = new THREE.Color(NIGHT);
-  scene.fog = new THREE.FogExp2(NIGHT, 0.0048);
+  scene.fog = new THREE.FogExp2(NIGHT, 0.0034);
 
   const wallMat = stone(0x2c2722, 0.86, 0.04);
   const pierMat = stone(0x4a433c, 0.4, 0.34);
@@ -225,28 +200,12 @@ export function buildHall(scene) {
     scene.add(strip);
   }
 
-  // PlaneGeometry faces +Z. rotation.y of +π/2 turns that normal to +X.
-  const labelMat = (text) =>
-    new THREE.MeshBasicMaterial({
-      map: etch(text),
-      transparent: true,
-      depthWrite: false,
-      toneMapped: true,
-    });
-  const leftLabel = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 0.75), labelMat("ARBEITSABLÄUFE"));
-  leftLabel.position.set(-(WALL_X - 0.7), 6.15, 7.4);
-  leftLabel.rotation.y = Math.PI / 2;
-  const rightLabel = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.75), labelMat("VERMARKTUNG"));
-  rightLabel.position.set(WALL_X - 0.7, 6.15, 7.4);
-  rightLabel.rotation.y = -Math.PI / 2;
-  scene.add(leftLabel, rightLabel);
-
   addDoor(scene, metalMat);
 
-  const hemi = new THREE.HemisphereLight(0x243036, 0x1a120e, 0.22);
+  const hemi = new THREE.HemisphereLight(0x314048, 0x2a1c16, 0.46);
   scene.add(hemi);
 
-  const key = new THREE.SpotLight(0xfff3e4, 2400, 32, 0.62, 0.7, 2);
+  const key = new THREE.SpotLight(0xfff3e4, 3800, 36, 0.7, 0.62, 2);
   key.position.set(1.2, 11.4, 7.2);
   key.target.position.set(0, 3.3, 0);
   key.castShadow = true;
@@ -258,32 +217,32 @@ export function buildHall(scene) {
   key.shadow.radius = 3;
   scene.add(key, key.target);
 
-  const fill = new THREE.SpotLight(0xb7c6cc, 520, 40, 1.1, 0.85, 2);
+  const fill = new THREE.SpotLight(0xb7c6cc, 1100, 44, 1.15, 0.75, 2);
   fill.position.set(-7.2, 5.4, 9.5);
   fill.target.position.set(0, 3.2, 0);
   scene.add(fill, fill.target);
 
-  const rim = new THREE.SpotLight(0xd48468, 420, 26, 0.78, 0.6, 2);
+  const rim = new THREE.SpotLight(0xd48468, 820, 30, 0.85, 0.55, 2);
   rim.position.set(3.8, 4.6, -8.5);
   rim.target.position.set(0, 3.0, 0);
   scene.add(rim, rim.target);
 
-  const rake = new THREE.SpotLight(0xe6d5c0, 680, 70, 0.7, 0.5, 2);
+  const rake = new THREE.SpotLight(0xe6d5c0, 1400, 74, 0.78, 0.45, 2);
   rake.position.set(-2.4, 10.2, 26);
   rake.target.position.set(-8, 4.5, 2);
   scene.add(rake, rake.target);
 
-  const leftGraze = new THREE.SpotLight(0xe4d9cb, 5200, 42, 0.38, 0.55, 2);
+  const leftGraze = new THREE.SpotLight(0xe4d9cb, 7600, 46, 0.46, 0.48, 2);
   leftGraze.position.set(-9.2, 7.2, 18);
   leftGraze.target.position.set(-12.4, 3.2, -8);
   scene.add(leftGraze, leftGraze.target);
 
-  const rightGraze = new THREE.SpotLight(0xe4d9cb, 4600, 42, 0.38, 0.55, 2);
+  const rightGraze = new THREE.SpotLight(0xe4d9cb, 6800, 46, 0.46, 0.48, 2);
   rightGraze.position.set(9.4, 7.2, 16);
   rightGraze.target.position.set(12.4, 3.2, -10);
   scene.add(rightGraze, rightGraze.target);
 
-  const farWall = new THREE.SpotLight(0xd5cbbd, 1600, 48, 0.5, 0.5, 2);
+  const farWall = new THREE.SpotLight(0xd5cbbd, 3000, 52, 0.58, 0.42, 2);
   farWall.position.set(0, 8.5, -6);
   farWall.target.position.set(0, 5, -28);
   scene.add(farWall, farWall.target);

@@ -19,9 +19,9 @@ const SWATCH = {
 };
 
 const LAYOUT = [
-  { id: "key", line: "Das Haus empfängt den Gast.", angle: 0.85, yaw: 0.55 },
-  { id: "letter", line: "Die Vermarktung geht von allein.", angle: -0.85, yaw: -0.4 },
-  { id: "ledger", line: "Die Arbeit läuft im Hintergrund.", angle: Math.PI, yaw: 0.35 },
+  { id: "key", line: "For hotels and tourism.", angle: 0.85, yaw: 0.55 },
+  { id: "letter", line: "Start with a fifteen-minute look.", angle: -0.85, yaw: -0.4 },
+  { id: "ledger", line: "AI systems for the work behind a stay.", angle: Math.PI, yaw: 0.35 },
 ];
 
 const RING = 8.6;
@@ -123,7 +123,7 @@ function placeCaption(piece, scene) {
   // Yaw first, then the child lies flat, so the line's top points at the mark.
   holder.rotation.y = Math.atan2(outX, outZ);
   const caption = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.55, 0.2),
+    new THREE.PlaneGeometry(2.6, 0.28),
     new THREE.MeshBasicMaterial({
       map: lineTexture(piece.line),
       transparent: true,

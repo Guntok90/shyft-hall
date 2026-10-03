@@ -7,6 +7,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { HALL, buildHall, loadMark } from "./hall.js";
 import { buildPieces } from "./pieces.js";
 import { buildPaint } from "./paint.js";
+import { blockHost, loadHost } from "./host.js";
 
 const params = new URLSearchParams(location.search);
 const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches || params.has("still");
@@ -22,7 +23,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.82;
+renderer.toneMappingExposure = 1.12;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -60,18 +61,20 @@ let intro = reduced ? 1 : 0;
 let dragging = false;
 let dragX = 0;
 let dragY = 0;
+let ignoreLockJump = false;
 let mark = null;
 let pieces = null;
 let paint = null;
 let recoil = 0;
 let lockFailed = false;
+let host = null;
 let running = true;
 
 const coarse = window.matchMedia("(pointer: coarse)").matches;
 if (coarse) {
   document.body.classList.add("coarse");
   stickEl.hidden = false;
-  hint.textContent = "Ziehen zum Schauen";
+  hint.textContent = "Drag to look";
 }
 
 function aimFrom(position, target) {
@@ -99,7 +102,9 @@ function placeIntro(t) {
 }
 
 function finishIntro() {
+  if (intro >= 1) return;
   intro = 1;
+  placeIntro(1);
 }
 
 function went() {
@@ -151,6 +156,7 @@ function updateMove(dt) {
     camera.position.x = (dx / d) * reach;
     camera.position.z = (dz / d) * reach;
   }
+  if (host) blockHost(camera.position);
   const blockers = pieces ? pieces.solids : [];
   const gun = paint && paint.blocker();
   for (const solid of gun ? blockers.concat(gun) : blockers) {
@@ -174,6 +180,7 @@ function frame() {
   updateMove(dt);
   if (mark && SPIN) mark.rotation.y += dt * SPIN;
   if (pieces) pieces.update(dt, camera.position);
+  if (host) host.update(dt, camera.position);
   if (paint) {
     recoil = paint.update(dt, {
       x: camera.position.x,
@@ -220,20 +227,27 @@ canvas.addEventListener("pointerdown", (event) => {
   canvas.setPointerCapture(event.pointerId);
   finishIntro();
   went();
+  if (!coarse && document.pointerLockElement !== canvas) {
+    const lock = canvas.requestPointerLock();
+    if (lock && typeof lock.catch === "function") lock.catch(() => {});
+  }
+});
+document.addEventListener("pointerlockchange", () => {
+  ignoreLockJump = document.pointerLockElement === canvas;
 });
 canvas.addEventListener("pointermove", (event) => {
-  if (document.pointerLockElement === canvas) {
-    yaw -= event.movementX * 0.0022;
-    pitch -= event.movementY * 0.0018;
-    pitch = THREE.MathUtils.clamp(pitch, -0.55, 0.72);
-    applyAim();
+  const locked = document.pointerLockElement === canvas;
+  if (!locked && !dragging) return;
+  if (locked && ignoreLockJump) {
+    ignoreLockJump = false;
     return;
   }
-  if (!dragging) return;
-  const dx = event.clientX - dragX;
-  const dy = event.clientY - dragY;
-  dragX = event.clientX;
-  dragY = event.clientY;
+  const dx = locked ? event.movementX : event.clientX - dragX;
+  const dy = locked ? event.movementY : event.clientY - dragY;
+  if (!locked) {
+    dragX = event.clientX;
+    dragY = event.clientY;
+  }
   yaw -= dx * 0.0022;
   pitch -= dy * 0.0018;
   pitch = THREE.MathUtils.clamp(pitch, -0.55, 0.72);
@@ -249,6 +263,12 @@ canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
 const MOVE = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
 window.addEventListener("keydown", (event) => {
+  if (event.code === "KeyT") {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === "A" || tag === "BUTTON" || tag === "INPUT") return;
+    if (host && host.talk()) event.preventDefault();
+    return;
+  }
   if (!MOVE.includes(event.code)) return;
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === "A" || tag === "BUTTON" || tag === "INPUT") return;
@@ -348,7 +368,10 @@ try {
   await document.fonts.ready;
   buildHall(scene);
   pieces = buildPieces(scene, { reduced, live: document.getElementById("piece-line") });
-  mark = await loadMark(scene);
+  [mark, host] = await Promise.all([
+    loadMark(scene),
+    loadHost(scene, { reduced, live: document.getElementById("host-line") }),
+  ]);
   paint = buildPaint(scene, camera, {
     reduced,
     coarse,
@@ -386,6 +409,9 @@ if (params.has("test") || params.has("still")) {
     get paint() {
       return paint;
     },
+    get host() {
+      return host;
+    },
     skip() {
       intro = 1;
       placeIntro(1);
@@ -400,3 +426,4 @@ if (params.has("test") || params.has("still")) {
     },
   };
 }
+
