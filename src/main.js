@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
@@ -27,10 +27,32 @@ renderer.toneMappingExposure = 1.12;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+function officeEnvironment() {
+  const env = new THREE.Scene();
+  const geo = new THREE.SphereGeometry(6, 24, 16);
+  const pos = geo.attributes.position;
+  const top = new THREE.Color(0xb7d0ea);
+  const horizon = new THREE.Color(0xf7f4ef);
+  const ground = new THREE.Color(0xd9d3c8);
+  const tmp = new THREE.Color();
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / 6;
+    tmp.copy(horizon).lerp(top, THREE.MathUtils.smoothstep(y, -0.02, 0.62));
+    if (y < 0) tmp.lerp(ground, Math.min(1, -y * 2.2));
+    colors[i * 3] = tmp.r;
+    colors[i * 3 + 1] = tmp.g;
+    colors[i * 3 + 2] = tmp.b;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  env.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+  return env;
+}
+
 const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.1;
+scene.environment = pmrem.fromScene(officeEnvironment(), 0.14).texture;
+scene.environmentIntensity = 0.48;
 pmrem.dispose();
 
 const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.08, 160);
@@ -41,6 +63,9 @@ composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.06, 0.35, 0.97);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+
+const WALK_SPEED = 3.7;
+const SPRINT_SPEED = 6.5;
 
 const UP = new THREE.Vector3(0, 1, 0);
 const fwd = new THREE.Vector3();
@@ -74,7 +99,7 @@ const coarse = window.matchMedia("(pointer: coarse)").matches;
 if (coarse) {
   document.body.classList.add("coarse");
   stickEl.hidden = false;
-  hint.textContent = "Drag to look";
+  hint.textContent = "Drag to look · push to run";
 }
 
 function aimFrom(position, target) {
@@ -142,7 +167,8 @@ function updateMove(dt) {
   f /= len;
   s /= len;
   basis();
-  const step = 3.7 * dt;
+  const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight") || Math.hypot(stick.x, stick.y) > 0.86;
+  const step = (sprint ? SPRINT_SPEED : WALK_SPEED) * dt;
   camera.position.addScaledVector(fwd, f * step);
   camera.position.addScaledVector(right, s * step);
   camera.position.y = HALL.eye;
@@ -269,6 +295,12 @@ window.addEventListener("keydown", (event) => {
     if (host && host.talk()) event.preventDefault();
     return;
   }
+  if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === "A" || tag === "BUTTON" || tag === "INPUT") return;
+    if (!event.repeat) keys.add(event.code);
+    return;
+  }
   if (!MOVE.includes(event.code)) return;
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === "A" || tag === "BUTTON" || tag === "INPUT") return;
@@ -292,7 +324,10 @@ window.addEventListener("keydown", (event) => {
 window.addEventListener("pointerup", (event) => {
   if (event.button === 0 || event.button === 2) paint?.setFiring(false);
 });
-window.addEventListener("blur", () => paint?.setFiring(false));
+window.addEventListener("blur", () => {
+  keys.clear();
+  paint?.setFiring(false);
+});
 document.addEventListener("pointerlockchange", () => {
   const locked = document.pointerLockElement === canvas;
   if (locked) dragging = false;
@@ -423,6 +458,23 @@ if (params.has("test") || params.has("still")) {
       aimFrom(camera.position, new THREE.Vector3(tx, ty, tz));
       applyAim();
       went();
+    },
+    grab(cols = 5, rows = 4) {
+      composer.render();
+      const gl = renderer.getContext();
+      const width = renderer.domElement.width;
+      const height = renderer.domElement.height;
+      const out = [];
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = Math.floor(((col + 0.5) / cols) * width);
+          const y = Math.floor(((row + 0.5) / rows) * height);
+          const pixel = new Uint8Array(4);
+          gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+          out.push([pixel[0], pixel[1], pixel[2]]);
+        }
+      }
+      return { width, height, pixels: out };
     },
   };
 }

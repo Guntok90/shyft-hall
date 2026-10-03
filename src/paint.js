@@ -1,8 +1,10 @@
 import * as THREE from "three";
 
 // A Thompson leans in the back-left corner. Picking it up shows the hopper:
-// it only shoots paint. The barrel is local −Z. Splats are planes whose +Z
-// matches the surface normal, so a floor hit lies flat and a wall hit stands up.
+// it only shoots paint. The barrel is local −Z. The sight is the camera ray,
+// and the ball flies straight from the muzzle to that hit. Splats are planes
+// whose +Z matches the surface normal, so a floor hit lies flat and a wall
+// hit stands up. Paint on the spinning mark is parented to the mark.
 
 const REACH_IN = 2.9;
 const REACH_OUT = 3.35;
@@ -40,6 +42,12 @@ const _shot = new THREE.Color();
 const _dummy = new THREE.Object3D();
 const _ray = new THREE.Raycaster();
 const _basis = new THREE.Matrix4();
+const _localM = new THREE.Matrix4();
+const _castFrom = new THREE.Vector3();
+const _castDir = new THREE.Vector3();
+const _clingP = new THREE.Vector3();
+const _clingN = new THREE.Vector3();
+const _white = new THREE.Color(0xffffff);
 
 function metal(color, roughness, metalness) {
   return new THREE.MeshStandardMaterial({
@@ -310,12 +318,14 @@ export function buildPaint(scene, camera, opts) {
 
   const pool = Array.from({ length: BALLS }, () => ({
     alive: false,
+    noGrav: false,
     pos: new THREE.Vector3(),
     vel: new THREE.Vector3(),
     color: new THREE.Color(),
     age: 0,
     r: BALL_R,
   }));
+  const stuck = new Map();
 
   let armed = false;
   let near = false;
@@ -340,6 +350,8 @@ export function buildPaint(scene, camera, opts) {
   const lastPoint = new THREE.Vector3();
   let prevXZ = new THREE.Vector2();
   let havePrev = false;
+  let hitObject = null;
+  let clingObject = null;
 
   function raycast(origin, dir, far) {
     _ray.set(origin, dir);
@@ -350,22 +362,84 @@ export function buildPaint(scene, camera, opts) {
       _normal.copy(hit.face.normal).transformDirection(hit.object.matrixWorld);
       if (_normal.dot(dir) < -0.05) {
         _hitPoint.copy(hit.point);
+        hitObject = hit.object;
         return true;
       }
     }
+    hitObject = null;
     return false;
   }
 
-  function writeSplat(px, py, pz, quat, sx, sy, color) {
-    const i = splatCursor;
-    splatCursor = (splatCursor + 1) % SPLATS;
+  function paintAnchor(object) {
+    let node = object;
+    while (node) {
+      if (node.userData && node.userData.stickPaint) return node;
+      node = node.parent;
+    }
+    return null;
+  }
+
+  function stuckRecord(anchor) {
+    const found = stuck.get(anchor);
+    if (found) return found;
+    const mesh = new THREE.InstancedMesh(splatMesh.geometry, splatMat, SPLATS);
+    mesh.name = "stuck-paint";
+    mesh.userData.noHit = true;
+    mesh.frustumCulled = false;
+    mesh.count = SPLATS;
+    for (let i = 0; i < SPLATS; i++) {
+      mesh.setMatrixAt(i, hide);
+      mesh.setColorAt(i, _white);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    anchor.add(mesh);
+    const record = { mesh, cursor: 0 };
+    stuck.set(anchor, record);
+    return record;
+  }
+
+  function writeSplat(px, py, pz, quat, sx, sy, color, anchor) {
+    const record = anchor ? stuckRecord(anchor) : null;
+    const mesh = record ? record.mesh : splatMesh;
+    const i = record ? record.cursor : splatCursor;
+    if (record) record.cursor = (record.cursor + 1) % SPLATS;
+    else splatCursor = (splatCursor + 1) % SPLATS;
     _dummy.position.set(px, py, pz);
     _dummy.quaternion.copy(quat);
     _dummy.scale.set(sx, sy, 1);
     _dummy.updateMatrix();
-    splatMesh.setMatrixAt(i, _dummy.matrix);
-    splatMesh.setColorAt(i, color);
+    if (record) {
+      anchor.updateMatrixWorld(true);
+      _localM.copy(anchor.matrixWorld).invert().multiply(_dummy.matrix);
+      mesh.setMatrixAt(i, _localM);
+    } else {
+      mesh.setMatrixAt(i, _dummy.matrix);
+    }
+    mesh.setColorAt(i, color);
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     splatsLanded += 1;
+  }
+
+  // Extra blobs only stay where a surface still sits under them. A sideways
+  // step into a gap in the mark is dropped instead of left hanging in the air.
+  function cling(point, normal) {
+    _castFrom.copy(point).addScaledVector(normal, 0.35);
+    _castDir.copy(normal).negate();
+    _ray.set(_castFrom, _castDir);
+    _ray.near = 0;
+    _ray.far = 0.6;
+    const hits = _ray.intersectObjects(targets, false);
+    for (const hit of hits) {
+      _clingN.copy(hit.face.normal).transformDirection(hit.object.matrixWorld);
+      if (_clingN.dot(normal) < 0.35) continue;
+      if (Math.abs(hit.distance - 0.35) > 0.22) continue;
+      _clingP.copy(hit.point);
+      clingObject = hit.object;
+      return true;
+    }
+    clingObject = null;
+    return false;
   }
 
   // `orient` fills _quat. It also writes _tangent and _bitangent, so callers
@@ -384,46 +458,49 @@ export function buildPaint(scene, camera, opts) {
     _quat.setFromRotationMatrix(_basis);
   }
 
-  function stamp(point, normal, incoming, color, scale) {
-    _pos.copy(point).addScaledVector(normal, 0.012 + (splatCursor % 5) * 0.0016);
+  function stamp(point, normal, incoming, color, scale, anchor) {
+    const lift = 0.012 + (splatsLanded % 5) * 0.0016;
+    _pos.copy(point).addScaledVector(normal, lift);
     _streak.copy(incoming).addScaledVector(normal, -incoming.dot(normal));
     if (_streak.lengthSq() < 1e-6) _streak.copy(Math.abs(normal.y) > 0.85 ? _xAxis : _up);
     _streak.normalize();
     orient(normal, _streak);
     _side.copy(_bitangent);
     const main = scale * (0.85 + Math.random() * 0.45);
-    writeSplat(_pos.x, _pos.y, _pos.z, _quat, main * 0.78, main * 1.28, color);
+    writeSplat(_pos.x, _pos.y, _pos.z, _quat, main * 0.78, main * 1.28, color, anchor);
 
     _color.copy(color).offsetHSL(0, -0.02, 0.03);
     _sat.copy(_pos).addScaledVector(normal, 0.004);
-    writeSplat(_sat.x, _sat.y, _sat.z, _quat, main * 0.34, main * 0.42, _color);
+    writeSplat(_sat.x, _sat.y, _sat.z, _quat, main * 0.34, main * 0.42, _color, anchor);
 
     const satellites = reduced ? 3 : 5;
     for (let s = 0; s < satellites; s++) {
       const along = (Math.random() - 0.15) * main * 0.95;
       const side = (Math.random() - 0.5) * main * 0.85;
-      _sat.copy(_pos).addScaledVector(_streak, along).addScaledVector(_side, side);
-      _sat.addScaledVector(normal, 0.002);
+      _sat.copy(point).addScaledVector(_streak, along).addScaledVector(_side, side);
+      if (!cling(_sat, normal)) continue;
       _color.copy(color).offsetHSL((Math.random() - 0.5) * 0.03, (Math.random() - 0.5) * 0.08, (Math.random() - 0.5) * 0.12);
-      _tmp.copy(_streak).applyAxisAngle(normal, Math.random() * Math.PI * 2);
-      orient(normal, _tmp);
+      _tmp.copy(_streak).applyAxisAngle(_clingN, Math.random() * Math.PI * 2);
+      orient(_clingN, _tmp);
+      _sat.copy(_clingP).addScaledVector(_clingN, 0.008);
       const blob = main * (0.18 + Math.random() * 0.28);
-      writeSplat(_sat.x, _sat.y, _sat.z, _quat, blob, blob * (0.8 + Math.random() * 0.5), _color);
+      writeSplat(_sat.x, _sat.y, _sat.z, _quat, blob, blob * (0.8 + Math.random() * 0.5), _color, paintAnchor(clingObject));
     }
 
     if (!reduced && Math.abs(normal.y) < 0.55 && Math.random() < 0.55) {
       _down.set(0, -1, 0).addScaledVector(normal, normal.y);
       if (_down.lengthSq() > 1e-4) {
         _down.normalize();
-        _sat.copy(point).addScaledVector(_down, main * 0.72).addScaledVector(normal, 0.014);
-        orient(normal, _down);
-        _color.copy(color).offsetHSL(0, 0.02, -0.06);
-        writeSplat(_sat.x, _sat.y, _sat.z, _quat, main * 0.28, main * 0.95, _color);
+        _sat.copy(point).addScaledVector(_down, main * 0.72);
+        if (cling(_sat, normal)) {
+          orient(_clingN, _down);
+          _sat.copy(_clingP).addScaledVector(_clingN, 0.01);
+          _color.copy(color).offsetHSL(0, 0.02, -0.06);
+          writeSplat(_sat.x, _sat.y, _sat.z, _quat, main * 0.28, main * 0.95, _color, paintAnchor(clingObject));
+        }
       }
     }
 
-    splatMesh.instanceMatrix.needsUpdate = true;
-    if (splatMesh.instanceColor) splatMesh.instanceColor.needsUpdate = true;
     lastNormal.copy(normal);
     lastPoint.copy(point);
   }
@@ -506,30 +583,42 @@ export function buildPaint(scene, camera, opts) {
 
   function spawnShot(spread) {
     syncView();
+    scene.updateMatrixWorld(true);
     camera.getWorldDirection(_forward);
-    _aimPoint.copy(camera.position).addScaledVector(_forward, 26);
+    // Sight ray first, then the muzzle aims at that point. A fixed far point
+    // left the ball low and to the right of the crosshair, off the mark.
+    const aimed = raycast(camera.position, _forward, 80);
+    const aimDistance = aimed ? _hitPoint.distanceTo(camera.position) : Infinity;
+    if (aimed) _aimPoint.copy(_hitPoint);
+    else _aimPoint.copy(camera.position).addScaledVector(_forward, 40);
+    const muzzle = held.getObjectByName("muzzle");
+    muzzle.getWorldPosition(_muzzlePos);
+    _shot.set(PAINT[(Math.random() * PAINT.length) | 0]);
+    if (aimed && aimDistance <= 1.35) {
+      _dir.copy(_hitPoint).sub(_muzzlePos);
+      if (_dir.lengthSq() < 1e-8) _dir.copy(_forward);
+      else _dir.normalize();
+      stamp(_hitPoint, _normal, _forward, _shot, 0.42, paintAnchor(hitObject));
+      burst();
+      return { immediate: true, vel: _dir.clone() };
+    }
     if (spread > 0) {
       _ortho.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
       _ortho.cross(_forward);
       if (_ortho.lengthSq() < 1e-8) _ortho.set(1, 0, 0).cross(_forward);
       _ortho.normalize();
-      _aimPoint.addScaledVector(_ortho, (Math.random() - 0.5) * 2 * spread * 26);
+      const dist = Math.max(1, camera.position.distanceTo(_aimPoint));
+      _aimPoint.addScaledVector(_ortho, (Math.random() - 0.5) * 2 * spread * dist);
     }
-    const muzzle = held.getObjectByName("muzzle");
-    muzzle.getWorldPosition(_muzzlePos);
-    _dir.copy(_aimPoint).sub(_muzzlePos).normalize();
-
-    _shot.set(PAINT[(Math.random() * PAINT.length) | 0]);
-    if (raycast(camera.position, _forward, 1.35)) {
-      stamp(_hitPoint, _normal, _forward, _shot, 0.42);
-      burst();
-      return { immediate: true, vel: _dir.clone() };
-    }
+    _dir.copy(_aimPoint).sub(_muzzlePos);
+    if (_dir.lengthSq() < 1e-8) _dir.copy(_forward);
+    else _dir.normalize();
 
     let slot = pool.find((ball) => !ball.alive);
     if (!slot) slot = pool.reduce((a, b) => (a.age > b.age ? a : b));
     slot.alive = true;
     slot.age = 0;
+    slot.noGrav = aimed;
     slot.r = BALL_R * (0.85 + Math.random() * 0.3);
     slot.color.copy(_shot);
     slot.pos.copy(_muzzlePos).addScaledVector(_dir, 0.06);
@@ -554,7 +643,7 @@ export function buildPaint(scene, camera, opts) {
       if (!ball.alive) continue;
       ball.age += dt;
       const before = _delta.copy(ball.pos);
-      ball.vel.y += GRAVITY * dt;
+      if (!ball.noGrav) ball.vel.y += GRAVITY * dt;
       ball.pos.addScaledVector(ball.vel, dt);
       _dir.copy(ball.pos).sub(before);
       const dist = _dir.length();
@@ -562,7 +651,7 @@ export function buildPaint(scene, camera, opts) {
       if (dist > 1e-5) {
         _dir.multiplyScalar(1 / dist);
         if (raycast(before, _dir, dist)) {
-          stamp(_hitPoint, _normal, ball.vel, ball.color, 0.46 + Math.random() * 0.22);
+          stamp(_hitPoint, _normal, ball.vel, ball.color, 0.46 + Math.random() * 0.22, paintAnchor(hitObject));
           ball.alive = false;
           struck = true;
           hit = { normal: lastNormal.clone(), point: lastPoint.clone() };
@@ -594,6 +683,8 @@ export function buildPaint(scene, camera, opts) {
   }
 
   function update(dt, player) {
+    syncView();
+    scene.updateMatrixWorld(true);
     const playable = !player || player.playable !== false;
     if (playable) {
       const d = Math.hypot(player.x - anchor.x, player.z - anchor.z);

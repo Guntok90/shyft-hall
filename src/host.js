@@ -112,7 +112,7 @@ export async function loadHost(scene, { reduced = false, live = null } = {}) {
   group.add(caption);
   scene.add(group);
 
-  const lamp = new THREE.SpotLight(0xfff1e4, 2600, 16, 0.62, 0.45, 2);
+  const lamp = new THREE.SpotLight(0xfff6ee, 280, 16, 0.9, 0.7, 2);
   lamp.position.set(0.4, 5.6, HOST.z + 4.6);
   lamp.target.position.set(HOST.x, 1.4, HOST.z);
   scene.add(lamp, lamp.target);
