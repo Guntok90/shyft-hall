@@ -6,6 +6,7 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { HALL, buildHall, loadMark } from "./hall.js";
 import { buildPieces } from "./pieces.js";
+import { buildPaint } from "./paint.js";
 
 const params = new URLSearchParams(location.search);
 const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches || params.has("still");
@@ -61,6 +62,9 @@ let dragX = 0;
 let dragY = 0;
 let mark = null;
 let pieces = null;
+let paint = null;
+let recoil = 0;
+let lockFailed = false;
 let running = true;
 
 const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -111,6 +115,7 @@ function resize() {
   renderer.setPixelRatio(pr);
   renderer.setSize(w, h);
   composer.setPixelRatio(pr);
+  if (paint) paint.layout();
 }
 
 function basis() {
@@ -146,8 +151,9 @@ function updateMove(dt) {
     camera.position.x = (dx / d) * reach;
     camera.position.z = (dz / d) * reach;
   }
-  if (!pieces) return;
-  for (const solid of pieces.solids) {
+  const blockers = pieces ? pieces.solids : [];
+  const gun = paint && paint.blocker();
+  for (const solid of gun ? blockers.concat(gun) : blockers) {
     const ax = camera.position.x - solid.x;
     const az = camera.position.z - solid.z;
     if (ax * ax + az * az >= solid.radius * solid.radius) continue;
@@ -168,12 +174,46 @@ function frame() {
   updateMove(dt);
   if (mark && SPIN) mark.rotation.y += dt * SPIN;
   if (pieces) pieces.update(dt, camera.position);
+  if (paint) {
+    recoil = paint.update(dt, {
+      x: camera.position.x,
+      z: camera.position.z,
+      playable: intro >= 1,
+    });
+    if (intro >= 1) camera.rotation.x = pitch - recoil;
+  }
   composer.render();
 }
 
 const clock = new THREE.Clock();
 
 canvas.addEventListener("pointerdown", (event) => {
+  if (paint?.armed && event.button === 2) {
+    paint.setFiring(true);
+    finishIntro();
+    went();
+    return;
+  }
+  if (paint?.armed && !coarse && event.button === 0 && document.pointerLockElement === canvas) {
+    paint.setFiring(true);
+    finishIntro();
+    went();
+    return;
+  }
+  if (paint?.armed && !coarse && event.button === 0 && !lockFailed) {
+    if (canvas.requestPointerLock) {
+      const pending = canvas.requestPointerLock();
+      if (pending && pending.catch) pending.catch(() => {
+        lockFailed = true;
+      });
+    } else {
+      lockFailed = true;
+    }
+    finishIntro();
+    went();
+    if (!lockFailed) return;
+  }
+  if (paint?.armed && !coarse && lockFailed && event.button === 0) paint.setFiring(true);
   dragging = true;
   dragX = event.clientX;
   dragY = event.clientY;
@@ -182,6 +222,13 @@ canvas.addEventListener("pointerdown", (event) => {
   went();
 });
 canvas.addEventListener("pointermove", (event) => {
+  if (document.pointerLockElement === canvas) {
+    yaw -= event.movementX * 0.0022;
+    pitch -= event.movementY * 0.0018;
+    pitch = THREE.MathUtils.clamp(pitch, -0.55, 0.72);
+    applyAim();
+    return;
+  }
   if (!dragging) return;
   const dx = event.clientX - dragX;
   const dy = event.clientY - dragY;
@@ -213,6 +260,42 @@ window.addEventListener("keydown", (event) => {
 window.addEventListener("keyup", (event) => {
   keys.delete(event.code);
 });
+window.addEventListener("keydown", (event) => {
+  if (event.code !== "KeyE" || event.repeat) return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === "A" || tag === "BUTTON" || tag === "INPUT") return;
+  if (!paint?.tryPickup()) return;
+  event.preventDefault();
+  finishIntro();
+  went();
+});
+window.addEventListener("pointerup", (event) => {
+  if (event.button === 0 || event.button === 2) paint?.setFiring(false);
+});
+window.addEventListener("blur", () => paint?.setFiring(false));
+document.addEventListener("pointerlockchange", () => {
+  const locked = document.pointerLockElement === canvas;
+  if (locked) dragging = false;
+  paint?.setLocked(locked);
+});
+
+const pickupBtn = document.getElementById("pickup");
+const sprayBtn = document.getElementById("spray");
+pickupBtn.addEventListener("click", () => {
+  if (!paint?.tryPickup()) return;
+  finishIntro();
+  went();
+});
+sprayBtn.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  sprayBtn.setPointerCapture(event.pointerId);
+  paint?.setFiring(true);
+  finishIntro();
+  went();
+});
+sprayBtn.addEventListener("pointerup", () => paint?.setFiring(false));
+sprayBtn.addEventListener("pointercancel", () => paint?.setFiring(false));
 
 let stickId = null;
 const STICK = 44;
@@ -266,6 +349,16 @@ try {
   buildHall(scene);
   pieces = buildPieces(scene, { reduced, live: document.getElementById("piece-line") });
   mark = await loadMark(scene);
+  paint = buildPaint(scene, camera, {
+    reduced,
+    coarse,
+    live: document.getElementById("piece-line"),
+    prompt: document.getElementById("prompt"),
+    quip: document.getElementById("quip"),
+    pickup: pickupBtn,
+    spray: sprayBtn,
+    crosshair: document.getElementById("crosshair"),
+  });
   document.body.classList.add("ready");
   clock.getDelta();
   requestAnimationFrame(frame);
@@ -290,9 +383,20 @@ if (params.has("test") || params.has("still")) {
     get pieces() {
       return pieces;
     },
+    get paint() {
+      return paint;
+    },
     skip() {
       intro = 1;
       placeIntro(1);
+      went();
+    },
+    place(x, z, tx, ty, tz) {
+      intro = 1;
+      camera.position.set(x, HALL.eye, z);
+      aimFrom(camera.position, new THREE.Vector3(tx, ty, tz));
+      applyAim();
+      went();
     },
   };
 }

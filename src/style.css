@@ -171,6 +171,102 @@ body {
 }
 body.went .hint { opacity: 0; }
 
+.prompt {
+  position: fixed;
+  left: 50%;
+  bottom: 5.5rem;
+  transform: translateX(-50%);
+  z-index: 6;
+  margin: 0;
+  font-family: var(--mo);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cream);
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.75);
+}
+.prompt[hidden] { display: none; }
+
+.quip {
+  position: fixed;
+  left: 50%;
+  top: 64%;
+  transform: translate(-50%, -50%);
+  z-index: 6;
+  margin: 0;
+  font-family: var(--sg);
+  font-weight: 500;
+  font-size: 1.45rem;
+  letter-spacing: -0.03em;
+  color: var(--cream);
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.72);
+  opacity: 0;
+  transition: opacity 0.55s ease;
+}
+.quip.show { opacity: 1; }
+
+.crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 6;
+  width: 5px;
+  height: 5px;
+  margin: 0;
+  border-radius: 50%;
+  background: var(--cream);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: transform 0.08s linear;
+}
+.crosshair[hidden] { display: none; }
+body.spraying .crosshair { transform: translate(-50%, -50%) scale(1.7); }
+
+.pickup[hidden], .spray[hidden] { display: none; }
+.pickup {
+  position: fixed;
+  left: 50%;
+  bottom: 6.4rem;
+  transform: translateX(-50%);
+  z-index: 6;
+  border: 0;
+  background: var(--plate);
+  color: var(--ink);
+  font-family: var(--sg);
+  font-weight: 500;
+  font-size: 0.98rem;
+  letter-spacing: -0.02em;
+  padding: 0.82em 1.2em;
+}
+.spray {
+  position: fixed;
+  z-index: 6;
+  right: 1.15rem;
+  bottom: 1.3rem;
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  border: 1px solid rgba(243, 230, 212, 0.32);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  padding: 0;
+}
+.spray i {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #ae593c;
+  display: block;
+  pointer-events: none;
+}
+
 .stick[hidden] { display: none; }
 .stick {
   position: fixed;
@@ -253,9 +349,16 @@ body.fallback .curtain { display: none; }
     font-size: 0.62rem;
   }
   .where { letter-spacing: 0.14em; }
-  body.coarse .stick { bottom: 10.4rem; }
+  body.coarse .stick,
+  body.coarse .spray { bottom: 10.4rem; }
+  .prompt {
+    top: 4.35rem;
+    bottom: auto;
+    font-size: 0.62rem;
+  }
+  .quip { font-size: 1.12rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .curtain i, .hint { transition: none; }
+  .curtain i, .hint, .quip, .crosshair { transition: none; }
 }
