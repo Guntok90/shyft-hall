@@ -1,6 +1,9 @@
 import * as THREE from "three";
+import { addGrounds } from "./grounds.js";
+import { addStairs } from "./stairs.js";
 
-// Same shell as hall.js. Walk point stays inside |x| 11.05 and z -26.2..32.2, eye at 1.64.
+// Same shell as hall.js. Walk point stays inside |x| 11.05 and z -26.2..32.2.
+// On the floor the eye is 1.64. The left stair in stairs.js lifts it onto the gangway.
 // Seats, planters and piers sit outside that point. Galleries hang above y 4.4.
 const Z0 = -28.4;
 const Z1 = 34.2;
@@ -30,17 +33,6 @@ function glassMaterial() {
   });
 }
 
-function mulberry32(seed) {
-  let a = seed;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 function boxInstances(geo, material, items, shadow = false) {
   if (!items.length) return null;
   const mesh = new THREE.InstancedMesh(geo, material, items.length);
@@ -64,6 +56,7 @@ export function addShell(scene, mats) {
   addEnds(scene, mats);
   addCeiling(scene, mats);
   addGalleries(scene, mats);
+  addStairs(scene, mats);
 }
 
 function addFloorInlay(scene) {
@@ -118,35 +111,7 @@ function addFloorInlay(scene) {
 }
 
 function addPark(scene) {
-  const geo = new THREE.PlaneGeometry(220, 220, 46, 46);
-  geo.rotateX(-Math.PI / 2);
-  const pos = geo.attributes.position;
-  const grass = new THREE.Color(0x8eae78);
-  const shade = new THREE.Color(0x5f8a48);
-  const path = new THREE.Color(0xe4dfd6);
-  const tmp = new THREE.Color();
-  const colors = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    tmp.copy(grass);
-    const dapple = 0.5 + 0.5 * Math.sin(x * 0.31) * Math.cos(z * 0.23);
-    tmp.lerp(shade, dapple * 0.38);
-    if (z > 32 && Math.abs(x) < 9) {
-      const fade = 1 - THREE.MathUtils.smoothstep(Math.abs(x), 1.6, 4.2);
-      tmp.lerp(path, fade * THREE.MathUtils.smoothstep(z, 32, 40));
-    }
-    colors[i * 3] = tmp.r;
-    colors[i * 3 + 1] = tmp.g;
-    colors[i * 3 + 2] = tmp.b;
-  }
-  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  const ground = new THREE.Mesh(
-    geo,
-    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, metalness: 0, vertexColors: true }),
-  );
-  ground.position.y = -0.05;
-  scene.add(ground);
+  addGrounds(scene);
 
   const terraceMat = stone(0xe7e2d8, 0.62, 0.04);
   const terrace = new THREE.Mesh(new THREE.BoxGeometry(16.5, 0.06, 20), terraceMat);
@@ -169,18 +134,10 @@ function addPark(scene) {
   scene.add(boxInstances(new THREE.BoxGeometry(1, 0.7, 1), hedgeMat, hedges, false));
   scene.add(boxInstances(new THREE.BoxGeometry(1, 0.08, 1), hedgeTop, hedgeCaps, false));
 
-  const rand = mulberry32(11);
-  const spots = [];
-  for (let i = 0; i < 72; i++) {
-    const side = i % 2 === 0 ? 1 : -1;
-    const x = side * (18 + rand() * 28);
-    const z = -58 + rand() * 138;
-    if (z > 30 && Math.abs(x) < 14) continue;
-    spots.push({ x, z, s: 0.85 + rand() * 0.95, shade: rand(), base: 0 });
-  }
   // Six interior trees. Centers sit past the walk limit, on the window line.
+  const spots = [];
   for (const side of [-1, 1]) {
-    for (const z of [-16, 6, 26]) spots.push({ x: side * 12.2, z, s: 0.48, shade: 0.35, base: 0.46, indoor: true });
+    for (const z of [-16, 6, 26]) spots.push({ x: side * 12.2, z, s: 0.48, shade: 0.35, base: 0.46 });
   }
 
   const lobes = [];
@@ -222,28 +179,8 @@ function addPark(scene) {
   crowns.castShadow = false;
   scene.add(trunks, crowns);
 
-  const pots = [];
-  spots.filter((spot) => spot.indoor).forEach((spot) => {
-    pots.push({ x: spot.x, y: 0.22, z: spot.z, sx: 1, sy: 1, sz: 1 });
-  });
+  const pots = spots.map((spot) => ({ x: spot.x, y: 0.22, z: spot.z, sx: 1, sy: 1, sz: 1 }));
   scene.add(boxInstances(new THREE.CylinderGeometry(0.42, 0.48, 0.44, 18), stone(0xe6e1d8, 0.5, 0.05), pots, true));
-
-  const shrubs = [];
-  const shrubRand = mulberry32(29);
-  for (let i = 0; i < 48; i++) {
-    const side = i % 2 === 0 ? 1 : -1;
-    const x = side * (15.5 + shrubRand() * 10);
-    const z = -40 + shrubRand() * 95;
-    if (Math.abs(x) < 16 && z > 28 && z < 56) continue;
-    shrubs.push({ x, y: 0.32, z, sx: 0.45 + shrubRand() * 0.35, sy: 0.28 + shrubRand() * 0.2, sz: 0.45 + shrubRand() * 0.3, ry: shrubRand() * 3 });
-  }
-  const shrubMesh = boxInstances(
-    new THREE.IcosahedronGeometry(1, 0),
-    new THREE.MeshStandardMaterial({ color: 0x4d7a40, roughness: 0.9, metalness: 0 }),
-    shrubs,
-    false,
-  );
-  scene.add(shrubMesh);
 }
 
 function addCurtain(scene, mats) {

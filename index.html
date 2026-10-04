@@ -11,8 +11,8 @@
 </head>
 <body>
 <a class="skip" href="#analyse">Skip to the start</a>
-<canvas id="view" aria-label="shyft's hall. The mark turns in the middle. A key, a ledger, and a letter lie around it. Someone waits at the far end."></canvas>
-<p class="sr">You are standing in a hall. The shyft mark turns in the middle. A key, a ledger, and a letter lie on the floor around it. Step close and a sentence appears. At the far end, someone is waiting.</p>
+<canvas id="view" aria-label="shyft's hall. The mark turns in the middle. Someone stands at its foot."></canvas>
+<p class="sr">You are standing in a hall. The shyft mark turns in the middle. Someone stands at its foot.</p>
 <p class="sr" id="piece-line" aria-live="polite"></p>
 <p class="sr" id="host-line" aria-live="polite"></p>
 
@@ -29,13 +29,16 @@
   </div>
 </footer>
 
-<p class="hint" id="hint">Click to look · WASD to walk · Shift to sprint</p>
+<p class="hint" id="hint">Click to look · WASD to walk · Shift to sprint · Space to jump</p>
 <p class="prompt" id="prompt" hidden></p>
 <p class="quip" id="quip" aria-hidden="true"></p>
+<p class="talk-line" id="talk-line" hidden aria-live="polite"></p>
+<button class="talk" id="talk" type="button" hidden>Talk</button>
 <button class="pickup" id="pickup" type="button" hidden>Aufheben</button>
 <button class="spray" id="spray" type="button" hidden aria-label="Farbe sprühen"><i></i></button>
 <div class="crosshair" id="crosshair" hidden></div>
 <div class="stick" id="stick" hidden><i></i></div>
+<button class="jump" id="jump" type="button" hidden>Jump</button>
 
 <div class="curtain" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
 <img class="still" src="/hero.png" alt="">

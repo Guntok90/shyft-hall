@@ -228,7 +228,44 @@ body.went .hint { opacity: 0; }
 .crosshair[hidden] { display: none; }
 body.spraying .crosshair { transform: translate(-50%, -50%) scale(1.7); }
 
-.pickup[hidden], .spray[hidden] { display: none; }
+.pickup[hidden], .spray[hidden], .talk[hidden], .talk-line[hidden] { display: none; }
+.talk-line {
+  position: fixed;
+  left: 50%;
+  bottom: 9.6rem;
+  transform: translateX(-50%);
+  z-index: 6;
+  margin: 0;
+  max-width: min(36rem, 88vw);
+  font-family: var(--sg);
+  font-weight: 500;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--ink);
+  pointer-events: none;
+  text-shadow: 0 1px 12px rgba(255, 255, 255, 0.9);
+}
+.talk {
+  position: fixed;
+  left: 50%;
+  bottom: 6.4rem;
+  transform: translateX(-50%);
+  z-index: 7;
+  border: 0;
+  cursor: pointer;
+  background: var(--plate);
+  color: var(--ink);
+  font-family: var(--sg);
+  font-weight: 500;
+  font-size: 0.98rem;
+  letter-spacing: -0.02em;
+  padding: 0.82em 1.2em;
+  pointer-events: auto;
+}
+body.coarse .talk { bottom: 9.2rem; }
+body.coarse .talk-line { bottom: 12.6rem; }
 .pickup {
   position: fixed;
   left: 50%;
@@ -268,6 +305,24 @@ body.spraying .crosshair { transform: translate(-50%, -50%) scale(1.7); }
   pointer-events: none;
 }
 
+.jump[hidden] { display: none; }
+.jump {
+  position: fixed;
+  z-index: 6;
+  left: 1.15rem;
+  bottom: 8.6rem;
+  border: 1px solid rgba(28, 22, 18, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  font-family: var(--sg);
+  font-weight: 500;
+  font-size: 0.92rem;
+  letter-spacing: -0.02em;
+  padding: 0.75em 1.05em;
+  pointer-events: auto;
+  touch-action: none;
+}
 .stick[hidden] { display: none; }
 .stick {
   position: fixed;
@@ -352,6 +407,7 @@ body.fallback .curtain { display: none; }
   .where { letter-spacing: 0.14em; }
   body.coarse .stick,
   body.coarse .spray { bottom: 10.4rem; }
+  body.coarse .jump { bottom: 18rem; }
   .prompt {
     top: 4.35rem;
     bottom: auto;

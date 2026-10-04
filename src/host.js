@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-// Far end of the nave, on the centerline, short of the end wall.
-// The model faces +Z, back toward the door, so a visitor walking in meets the face.
+// On the centerline, just outside the plinth, so she stands at the foot of the mark.
+// The model faces +Z, toward the door, and a visitor walking in meets the face.
 export const HOST = {
   x: 0,
-  z: -23.6,
+  z: 6.05,
   radius: 0.55,
   front: 1.05,
   half: 1.2,
@@ -18,8 +18,9 @@ const SHOW = 2.2;
 let voice = null;
 let near = false;
 
-// Called with a function when voice chat is ready. It runs only while the
-// visitor is with the host and presses T. The argument is { id: "host" }.
+// Called with a function when voice chat is ready. T works up close. A click
+// on her passes { id: "host", stay, clicked }. stay keeps the line open from
+// across the hall until the visitor walks into reach.
 export function connectVoice(handler) {
   voice = typeof handler === "function" ? handler : null;
 }
@@ -32,9 +33,22 @@ export function blockHost(position) {
     position.x = HOST.x + (ax / d) * HOST.radius;
     position.z = HOST.z + (az / d) * HOST.radius;
   }
-  if (Math.abs(position.x - HOST.x) < HOST.half && position.z < HOST.z + HOST.front) {
-    position.z = HOST.z + HOST.front;
-  }
+  // Only her body. Leaving this open toward the back wall throws a visitor
+  // standing anywhere on the centerline to the front of this slab.
+  const minX = HOST.x - HOST.half;
+  const maxX = HOST.x + HOST.half;
+  const minZ = HOST.z - HOST.radius;
+  const maxZ = HOST.z + HOST.front;
+  if (position.x <= minX || position.x >= maxX || position.z <= minZ || position.z >= maxZ) return;
+  const penLeft = position.x - minX;
+  const penRight = maxX - position.x;
+  const penBack = position.z - minZ;
+  const penFront = maxZ - position.z;
+  const least = Math.min(penLeft, penRight, penBack, penFront);
+  if (least === penLeft) position.x = minX;
+  else if (least === penRight) position.x = maxX;
+  else if (least === penBack) position.z = minZ;
+  else position.z = maxZ;
 }
 
 function lineTexture(text) {
@@ -95,6 +109,7 @@ export async function loadHost(scene, { reduced = false, live = null } = {}) {
   );
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.02;
+  shadow.userData.noHit = true;
   group.add(shadow);
 
   const caption = new THREE.Mesh(
@@ -109,6 +124,7 @@ export async function loadHost(scene, { reduced = false, live = null } = {}) {
   );
   caption.rotation.x = -Math.PI / 2;
   caption.position.set(0, 0.045, 1.45);
+  caption.userData.noHit = true;
   group.add(caption);
   scene.add(group);
 
@@ -129,6 +145,11 @@ export async function loadHost(scene, { reduced = false, live = null } = {}) {
       voice({ id: "host" });
       return true;
     },
+    speak() {
+      if (!voice) return false;
+      voice({ id: "host", stay: !near, clicked: true });
+      return true;
+    },
     update(dt, player) {
       time += dt;
       const distance = Math.hypot(player.x - HOST.x, player.z - HOST.z);
@@ -144,7 +165,10 @@ export async function loadHost(scene, { reduced = false, live = null } = {}) {
       const dz = player.z - HOST.z;
       const aim = dz > 0.5 ? THREE.MathUtils.clamp(Math.atan2(dx, dz), -0.4, 0.4) : 0;
       head.rotation.y = THREE.MathUtils.damp(head.rotation.y, rest.y + aim, 3, dt);
-      head.rotation.x = rest.x + Math.sin(time * 0.9) * 0.018;
+      const talking = document.body.classList.contains("talking");
+      const rate = talking ? 6.5 : 0.9;
+      const nod = talking ? 0.045 : 0.018;
+      head.rotation.x = rest.x + Math.sin(time * rate) * nod;
       head.rotation.z = rest.z;
     },
   };

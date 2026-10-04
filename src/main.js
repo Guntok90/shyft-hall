@@ -5,9 +5,11 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { HALL, buildHall, loadMark } from "./hall.js";
-import { buildPieces } from "./pieces.js";
 import { buildPaint } from "./paint.js";
-import { blockHost, loadHost } from "./host.js";
+import { blockHost, connectVoice, loadHost } from "./host.js";
+import { createTalk } from "./voice.js";
+import { groundsSnapshot, updateGrounds } from "./grounds.js";
+import { footAt, levelSolids, standAt } from "./stairs.js";
 
 const params = new URLSearchParams(location.search);
 const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches || params.has("still");
@@ -55,7 +57,7 @@ scene.environment = pmrem.fromScene(officeEnvironment(), 0.14).texture;
 scene.environmentIntensity = 0.48;
 pmrem.dispose();
 
-const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.08, 160);
+const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.08, 420);
 camera.rotation.order = "YXZ";
 
 const composer = new EffectComposer(renderer);
@@ -65,7 +67,13 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
 const WALK_SPEED = 3.7;
-const SPRINT_SPEED = 6.5;
+const SPRINT_SPEED = 8.4;
+const GROUND_RATE = 22;
+const BRAKE_RATE = 28;
+const AIR_RATE = 10;
+const GRAVITY = 18;
+const JUMP_V = 5.5;
+const HEADROOM = 10.8;
 
 const UP = new THREE.Vector3(0, 1, 0);
 const fwd = new THREE.Vector3();
@@ -88,18 +96,49 @@ let dragX = 0;
 let dragY = 0;
 let ignoreLockJump = false;
 let mark = null;
-let pieces = null;
 let paint = null;
 let recoil = 0;
 let lockFailed = false;
 let host = null;
+let talk = null;
 let running = true;
+let velX = 0;
+let velZ = 0;
+let vy = 0;
+let lift = 0;
+let stance = 0;
+let grounded = true;
+let jumpQueued = 0;
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let clickPress = null;
+let pressMove = 0;
+
+function hitsHost(clientX, clientY) {
+  if (!host || !host.group) return false;
+  const locked = document.pointerLockElement === canvas;
+  if (locked) {
+    ndc.set(0, 0);
+  } else {
+    const rect = canvas.getBoundingClientRect();
+    ndc.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+  }
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObject(host.group, true);
+  for (const hit of hits) {
+    if (!hit.object.userData.noHit) return true;
+  }
+  return false;
+}
 
 const coarse = window.matchMedia("(pointer: coarse)").matches;
 if (coarse) {
   document.body.classList.add("coarse");
   stickEl.hidden = false;
-  hint.textContent = "Drag to look · push to run";
+  hint.textContent = "Drag to look · push to run · tap Jump";
 }
 
 function aimFrom(position, target) {
@@ -116,6 +155,7 @@ function applyAim() {
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
   camera.rotation.z = 0;
+  camera.updateMatrixWorld();
 }
 
 function placeIntro(t) {
@@ -156,43 +196,113 @@ function basis() {
   right.crossVectors(fwd, UP);
 }
 
+function groundHere() {
+  velX = 0;
+  velZ = 0;
+  vy = 0;
+  lift = 0;
+  grounded = true;
+  jumpQueued = 0;
+}
+
 function updateMove(dt) {
   if (intro < 1) return;
+  if (grounded) stance = camera.position.y - HALL.eye;
+  jumpQueued = Math.max(0, jumpQueued - dt);
+
   let f = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
   let s = (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) - (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
   f += stick.y;
   s += stick.x;
   const len = Math.hypot(f, s);
-  if (len < 0.04) return;
-  f /= len;
-  s /= len;
+  const moving = len >= 0.04;
+  if (moving) {
+    f /= len;
+    s /= len;
+  }
   basis();
   const sprint = keys.has("ShiftLeft") || keys.has("ShiftRight") || Math.hypot(stick.x, stick.y) > 0.86;
-  const step = (sprint ? SPRINT_SPEED : WALK_SPEED) * dt;
-  camera.position.addScaledVector(fwd, f * step);
-  camera.position.addScaledVector(right, s * step);
-  camera.position.y = HALL.eye;
-  camera.position.x = THREE.MathUtils.clamp(camera.position.x, HALL.minX, HALL.maxX);
-  camera.position.z = THREE.MathUtils.clamp(camera.position.z, HALL.minZ, HALL.maxZ);
-  const dx = camera.position.x;
-  const dz = camera.position.z;
-  const reach = HALL.plinthR;
-  if (dx * dx + dz * dz < reach * reach) {
-    const d = Math.hypot(dx, dz) || 0.0001;
-    camera.position.x = (dx / d) * reach;
-    camera.position.z = (dz / d) * reach;
+  const top = moving ? (sprint ? SPRINT_SPEED : WALK_SPEED) : 0;
+  const wishX = moving ? (fwd.x * f + right.x * s) * top : 0;
+  const wishZ = moving ? (fwd.z * f + right.z * s) * top : 0;
+  const rate = grounded ? (moving ? GROUND_RATE : BRAKE_RATE) : AIR_RATE;
+  const blend = 1 - Math.exp(-rate * dt);
+  velX += (wishX - velX) * blend;
+  velZ += (wishZ - velZ) * blend;
+  if (velX * velX + velZ * velZ < 0.0004) {
+    velX = 0;
+    velZ = 0;
   }
-  if (host) blockHost(camera.position);
-  const blockers = pieces ? pieces.solids : [];
-  const gun = paint && paint.blocker();
-  for (const solid of gun ? blockers.concat(gun) : blockers) {
-    const ax = camera.position.x - solid.x;
-    const az = camera.position.z - solid.z;
-    if (ax * ax + az * az >= solid.radius * solid.radius) continue;
-    const d = Math.hypot(ax, az) || 0.0001;
-    camera.position.x = solid.x + (ax / d) * solid.radius;
-    camera.position.z = solid.z + (az / d) * solid.radius;
+
+  const dist = Math.hypot(velX, velZ) * dt;
+  if (dist > 0) {
+    const slices = Math.max(1, Math.ceil(dist / 0.1));
+    const stepX = (velX * dt) / slices;
+    const stepZ = (velZ * dt) / slices;
+    for (let i = 0; i < slices; i++) {
+      const prevX = camera.position.x;
+      const prevZ = camera.position.z;
+      const foot = stance;
+      camera.position.x += stepX;
+      camera.position.z += stepZ;
+      camera.position.x = THREE.MathUtils.clamp(camera.position.x, HALL.minX, HALL.maxX);
+      camera.position.z = THREE.MathUtils.clamp(camera.position.z, HALL.minZ, HALL.maxZ);
+      if (foot < 0.8) {
+        const dx = camera.position.x;
+        const dz = camera.position.z;
+        const reach = HALL.plinthR;
+        if (dx * dx + dz * dz < reach * reach) {
+          const d = Math.hypot(dx, dz) || 0.0001;
+          camera.position.x = (dx / d) * reach;
+          camera.position.z = (dz / d) * reach;
+        }
+        if (host) blockHost(camera.position);
+      }
+      const gun = paint && paint.blocker();
+      const upstairs = [];
+      if (gun && Math.abs(foot - gun.foot) < 0.6) upstairs.push(gun);
+      for (const solid of levelSolids()) {
+        if (Math.abs(foot - solid.foot) < 0.6) upstairs.push(solid);
+      }
+      for (const solid of upstairs) {
+        const ax = camera.position.x - solid.x;
+        const az = camera.position.z - solid.z;
+        if (ax * ax + az * az >= solid.radius * solid.radius) continue;
+        const d = Math.hypot(ax, az) || 0.0001;
+        camera.position.x = solid.x + (ax / d) * solid.radius;
+        camera.position.z = solid.z + (az / d) * solid.radius;
+      }
+      const next = footAt(camera.position.x, camera.position.z, foot);
+      if (next === null) {
+        camera.position.x = prevX;
+        camera.position.z = prevZ;
+        break;
+      }
+      stance = next;
+    }
   }
+
+  if (!grounded) {
+    vy -= GRAVITY * dt;
+    lift += vy * dt;
+    const cap = HEADROOM - stance - HALL.eye;
+    if (lift > cap) {
+      lift = Math.max(0, cap);
+      vy = Math.min(vy, 0);
+    }
+    if (lift <= 0 && vy <= 0) {
+      lift = 0;
+      vy = 0;
+      grounded = true;
+    }
+  }
+  if (jumpQueued > 0 && grounded) {
+    vy = JUMP_V;
+    lift = 0;
+    grounded = false;
+    jumpQueued = 0;
+  }
+  camera.position.y = stance + lift + HALL.eye;
 }
 
 function frame() {
@@ -205,8 +315,8 @@ function frame() {
   }
   updateMove(dt);
   if (mark && SPIN) mark.rotation.y += dt * SPIN;
-  if (pieces) pieces.update(dt, camera.position);
   if (host) host.update(dt, camera.position);
+  if (talk && host) talk.follow(host.near);
   if (paint) {
     recoil = paint.update(dt, {
       x: camera.position.x,
@@ -215,12 +325,21 @@ function frame() {
     });
     if (intro >= 1) camera.rotation.x = pitch - recoil;
   }
+  updateGrounds(dt, reduced);
   composer.render();
 }
 
 const clock = new THREE.Clock();
 
 canvas.addEventListener("pointerdown", (event) => {
+  clickPress = null;
+  pressMove = 0;
+  if (event.button === 0 && !paint?.armed) {
+    clickPress = {
+      id: event.pointerId,
+      hit: hitsHost(event.clientX, event.clientY),
+    };
+  }
   if (paint?.armed && event.button === 2) {
     paint.setFiring(true);
     finishIntro();
@@ -270,6 +389,7 @@ canvas.addEventListener("pointermove", (event) => {
   }
   const dx = locked ? event.movementX : event.clientX - dragX;
   const dy = locked ? event.movementY : event.clientY - dragY;
+  if (clickPress && event.pointerId === clickPress.id) pressMove += Math.hypot(dx, dy);
   if (!locked) {
     dragX = event.clientX;
     dragY = event.clientY;
@@ -280,8 +400,14 @@ canvas.addEventListener("pointermove", (event) => {
   applyAim();
 });
 function endDrag(event) {
+  const press = clickPress;
+  clickPress = null;
   if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
   dragging = false;
+  if (event.type !== "pointerup") return;
+  if (!press || event.pointerId !== press.id || event.button !== 0) return;
+  if (paint?.armed || pressMove > 8 || !press.hit) return;
+  host?.speak();
 }
 canvas.addEventListener("pointerup", endDrag);
 canvas.addEventListener("pointercancel", endDrag);
@@ -299,6 +425,16 @@ window.addEventListener("keydown", (event) => {
     const tag = document.activeElement && document.activeElement.tagName;
     if (tag === "A" || tag === "BUTTON" || tag === "INPUT") return;
     if (!event.repeat) keys.add(event.code);
+    return;
+  }
+  if (event.code === "Space") {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === "A" || tag === "BUTTON" || tag === "INPUT") return;
+    event.preventDefault();
+    if (event.repeat) return;
+    jumpQueued = 0.16;
+    finishIntro();
+    went();
     return;
   }
   if (!MOVE.includes(event.code)) return;
@@ -326,6 +462,7 @@ window.addEventListener("pointerup", (event) => {
 });
 window.addEventListener("blur", () => {
   keys.clear();
+  jumpQueued = 0;
   paint?.setFiring(false);
 });
 document.addEventListener("pointerlockchange", () => {
@@ -387,6 +524,16 @@ function endStick(event) {
 stickEl.addEventListener("pointerup", endStick);
 stickEl.addEventListener("pointercancel", endStick);
 
+const jumpBtn = document.getElementById("jump");
+if (coarse) jumpBtn.hidden = false;
+jumpBtn.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  jumpQueued = 0.16;
+  finishIntro();
+  went();
+});
+
 window.addEventListener("resize", resize);
 document.addEventListener("visibilitychange", () => {
   running = !document.hidden;
@@ -402,12 +549,16 @@ resize();
 try {
   await document.fonts.ready;
   buildHall(scene);
-  pieces = buildPieces(scene, { reduced, live: document.getElementById("piece-line") });
   [mark, host] = await Promise.all([
     loadMark(scene),
     loadHost(scene, { reduced, live: document.getElementById("host-line") }),
   ]);
-  paint = buildPaint(scene, camera, {
+  talk = createTalk({
+    line: document.getElementById("talk-line"),
+    button: document.getElementById("talk"),
+  });
+  connectVoice((detail) => talk.toggle(detail));
+  paint = await buildPaint(scene, camera, {
     reduced,
     coarse,
     live: document.getElementById("piece-line"),
@@ -438,14 +589,14 @@ if (params.has("test") || params.has("still")) {
     get pitch() {
       return pitch;
     },
-    get pieces() {
-      return pieces;
-    },
     get paint() {
       return paint;
     },
     get host() {
       return host;
+    },
+    grounds() {
+      return groundsSnapshot();
     },
     skip() {
       intro = 1;
@@ -454,7 +605,9 @@ if (params.has("test") || params.has("still")) {
     },
     place(x, z, tx, ty, tz) {
       intro = 1;
-      camera.position.set(x, HALL.eye, z);
+      groundHere();
+      stance = standAt(x, z);
+      camera.position.set(x, stance + HALL.eye, z);
       aimFrom(camera.position, new THREE.Vector3(tx, ty, tz));
       applyAim();
       went();

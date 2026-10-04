@@ -1,8 +1,11 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { HALL } from "./hall.js";
+import { GUN_SPOT } from "./stairs.js";
 
-// A Thompson leans in the back-left corner. Picking it up shows the hopper:
-// it only shoots paint. The barrel is local −Z. The sight is the camera ray,
-// and the ball flies straight from the muzzle to that hit. Splats are planes
+// A paint siphon stands on the left gangway. The nozzle is local −Z, which
+// is Blender +Y in scripts/build_siphon.py. The sight is the camera ray, and
+// the ball flies straight from the muzzle to that hit. Splats are planes
 // whose +Z matches the surface normal, so a floor hit lies flat and a wall
 // hit stands up. Paint on the spinning mark is parented to the mark.
 
@@ -49,15 +52,6 @@ const _clingP = new THREE.Vector3();
 const _clingN = new THREE.Vector3();
 const _white = new THREE.Color(0xffffff);
 
-function metal(color, roughness, metalness) {
-  return new THREE.MeshStandardMaterial({
-    color,
-    roughness,
-    metalness,
-    envMapIntensity: 0.35,
-  });
-}
-
 function blobTexture() {
   const canvas = document.createElement("canvas");
   canvas.width = 256;
@@ -99,90 +93,21 @@ function blobTexture() {
   return tex;
 }
 
-function cylZ(radius, length, segments = 14) {
-  const geo = new THREE.CylinderGeometry(radius, radius, length, segments);
-  geo.rotateX(Math.PI / 2);
-  return geo;
-}
-
-function buildTommy(withHopper) {
-  const group = new THREE.Group();
-  group.name = "tommy";
-  const wood = metal(0x513e30, 0.72, 0.04);
-  const woodDark = metal(0x3a2b22, 0.78, 0.03);
-  const steel = metal(0x3c3a36, 0.36, 0.72);
-  const steelDark = metal(0x1a1917, 0.46, 0.55);
-  const beadMat = new THREE.MeshStandardMaterial({
-    color: 0xe8cbb0,
-    emissive: 0xe8cbb0,
-    emissiveIntensity: 0.9,
-    roughness: 0.32,
+async function loadSiphon() {
+  const gltf = await new GLTFLoader().loadAsync("/models/siphon.glb");
+  const root = gltf.scene;
+  root.name = "siphon";
+  root.traverse((obj) => {
+    if (!obj.isMesh) return;
+    obj.castShadow = true;
+    obj.receiveShadow = true;
+    const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const material of materials) {
+      if (!material || !("envMapIntensity" in material)) continue;
+      material.envMapIntensity = material.transmission > 0 ? 1 : 0.62;
+    }
   });
-
-  const part = (geo, mat, x, y, z, rx = 0) => {
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(x, y, z);
-    mesh.rotation.x = rx;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    group.add(mesh);
-    return mesh;
-  };
-
-  part(new THREE.BoxGeometry(0.085, 0.2, 0.1), woodDark, 0, -0.01, 0.5);
-  part(new THREE.BoxGeometry(0.062, 0.08, 0.32), wood, 0, 0.04, 0.32);
-  part(new THREE.BoxGeometry(0.078, 0.092, 0.3), steel, 0, 0.055, 0.05);
-  part(new THREE.BoxGeometry(0.05, 0.018, 0.2), steelDark, 0, 0.108, 0.04);
-  part(new THREE.BoxGeometry(0.05, 0.13, 0.055), wood, 0, -0.055, 0.15, -0.28);
-  part(new THREE.BoxGeometry(0.046, 0.125, 0.05), wood, 0, -0.05, -0.15);
-  part(new THREE.BoxGeometry(0.058, 0.042, 0.2), woodDark, 0, 0.028, -0.2);
-
-  const drumGeo = new THREE.CylinderGeometry(0.105, 0.105, 0.078, 28);
-  drumGeo.rotateZ(Math.PI / 2);
-  part(drumGeo, steel, 0, -0.035, 0.02);
-  const face = new THREE.Mesh(new THREE.CircleGeometry(0.092, 28), metal(0x6a655c, 0.42, 0.48));
-  face.position.set(0.041, -0.035, 0.02);
-  face.rotation.y = Math.PI / 2;
-  face.castShadow = true;
-  group.add(face);
-  const rimGeo = new THREE.TorusGeometry(0.105, 0.012, 8, 24);
-  rimGeo.rotateY(Math.PI / 2);
-  part(rimGeo, steelDark, 0.04, -0.035, 0.02);
-
-  part(cylZ(0.016, 0.46, 12), steelDark, 0, 0.072, -0.44);
-  for (let i = 0; i < 8; i++) {
-    part(cylZ(0.03, 0.012, 12), steel, 0, 0.072, -0.28 - i * 0.042);
-  }
-  part(cylZ(0.024, 0.07, 12), steel, 0, 0.072, -0.7);
-  part(new THREE.BoxGeometry(0.012, 0.045, 0.012), steel, 0, 0.12, 0.14);
-  part(new THREE.SphereGeometry(0.012, 8, 6), beadMat, 0, 0.1, -0.66);
-
-  const muzzle = new THREE.Object3D();
-  muzzle.name = "muzzle";
-  muzzle.position.set(0, 0.072, -0.75);
-  group.add(muzzle);
-
-  if (withHopper) addHopper(group);
-  return group;
-}
-
-function addHopper(group) {
-  const shellMat = metal(0x242220, 0.48, 0.12);
-  const shell = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.05, 0.1, 16, 1, true), shellMat);
-  shell.material.side = THREE.DoubleSide;
-  shell.position.set(0, 0.15, 0.04);
-  shell.castShadow = true;
-  group.add(shell);
-  const ballGeo = new THREE.SphereGeometry(0.026, 10, 8);
-  PAINT.slice(0, 6).forEach((hex, i) => {
-    const ball = new THREE.Mesh(
-      ballGeo,
-      new THREE.MeshBasicMaterial({ color: hex, toneMapped: false }),
-    );
-    const a = (i / 6) * Math.PI * 2;
-    ball.position.set(Math.cos(a) * 0.02, 0.175 + (i % 3) * 0.028, 0.04 + Math.sin(a) * 0.02);
-    group.add(ball);
-  });
+  return root;
 }
 
 function makeNoise(ctx) {
@@ -193,42 +118,36 @@ function makeNoise(ctx) {
   return buffer;
 }
 
-export function buildPaint(scene, camera, opts) {
+export async function buildPaint(scene, camera, opts) {
   const { reduced = false, coarse = false, live = null, prompt, quip, pickup, spray, crosshair } = opts;
 
   const targets = [];
-  const world = buildTommy(false);
-  const held = buildTommy(true);
+  const world = await loadSiphon();
+  const held = world.clone(true);
 
-  // Yaw 3π/4 lays the barrel along the left wall. Someone walking in from the
-  // nave looks along the drum's axis, so the round magazine faces them.
+  // The gauge sits on local +X. Yaw −π/2 turns that face toward world −Z,
+  // which is the stair you climb to reach the gangway.
   const prop = new THREE.Group();
-  prop.name = "tommy-prop";
-  const tilt = new THREE.Group();
-  tilt.rotation.x = 1.04;
-  tilt.add(world);
-  prop.add(tilt);
-  prop.rotation.y = Math.PI * 0.75;
-  prop.position.set(-10.85, 0, -24.95);
+  prop.name = "siphon-prop";
+  prop.add(world);
+  prop.rotation.y = -Math.PI / 2;
+  prop.scale.setScalar(2.15);
+  prop.position.set(GUN_SPOT.x, GUN_SPOT.y, GUN_SPOT.z);
   scene.add(prop);
   prop.updateMatrixWorld(true);
   const raised = new THREE.Box3().setFromObject(prop);
-  prop.position.y += 0.02 - raised.min.y;
+  prop.position.y += GUN_SPOT.y + 0.02 - raised.min.y;
   prop.updateMatrixWorld(true);
-  let seated = new THREE.Box3().setFromObject(prop);
-  if (seated.min.x < -12.55) prop.position.x += -12.55 - seated.min.x;
-  if (seated.min.z < -27.55) prop.position.z += -27.55 - seated.min.z;
-  prop.updateMatrixWorld(true);
-  seated = new THREE.Box3().setFromObject(prop);
+  const seated = new THREE.Box3().setFromObject(prop);
   const seatCenter = seated.getCenter(new THREE.Vector3());
-  const anchor = { x: seatCenter.x, z: seatCenter.z };
+  const anchor = { x: seatCenter.x, z: seatCenter.z, foot: GUN_SPOT.y };
 
   world.traverse((obj) => {
     obj.userData.noHit = true;
   });
 
-  const practical = new THREE.PointLight(0xe4d3c0, 36, 6.5, 2);
-  practical.position.set(anchor.x + 0.85, 1.7, anchor.z + 0.7);
+  const practical = new THREE.PointLight(0xe4d3c0, 28, 5.5, 2);
+  practical.position.set(anchor.x + 0.35, anchor.foot + 1.55, anchor.z - 0.85);
   scene.add(practical);
 
   const viewAnchor = new THREE.Group();
@@ -242,7 +161,7 @@ export function buildPaint(scene, camera, opts) {
   scene.add(viewAnchor);
 
   const flash = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.12, 0.12),
+    new THREE.SphereGeometry(0.022, 12, 8),
     new THREE.MeshBasicMaterial({
       color: 0xfff1c9,
       transparent: true,
@@ -251,8 +170,8 @@ export function buildPaint(scene, camera, opts) {
     }),
   );
   flash.visible = false;
-  flash.position.set(0, 0.072, -0.8);
-  held.add(flash);
+  const muzzle = held.getObjectByName("muzzle");
+  muzzle.add(flash);
 
   viewAnchor.traverse((obj) => {
     obj.userData.noHit = true;
@@ -264,15 +183,16 @@ export function buildPaint(scene, camera, opts) {
   camera.layers.enable(1);
   viewAnchor.visible = false;
 
-  const basePos = new THREE.Vector3(0.26, -0.21, -0.54);
+  const basePos = new THREE.Vector3(0.22, -0.04, -0.62);
   function layout() {
     const narrow = window.innerWidth < 720;
-    // Narrow lens (38°). Keep the gun out along −Z or the muzzle fills the frame.
-    basePos.set(narrow ? 0.16 : 0.28, narrow ? -0.13 : -0.15, narrow ? -0.72 : -0.92);
-    held.scale.setScalar(narrow ? 0.4 : 0.52);
-    _aimPoint.set(-0.16, 0.05, -6).normalize();
+    // Narrow lens (38°). Keep the bottle in the lower corner so the nozzle
+    // points inward without filling the frame.
+    basePos.set(narrow ? 0.16 : 0.22, narrow ? -0.02 : -0.03, narrow ? -0.5 : -0.62);
+    held.scale.setScalar(narrow ? 0.48 : 0.58);
+    _aimPoint.set(-0.12, 0.04, -6).normalize();
     aim.quaternion.setFromUnitVectors(_barrel, _aimPoint);
-    aim.rotateZ(narrow ? 0.38 : 0.45);
+    aim.rotateZ(narrow ? 0.16 : 0.22);
     kick.position.copy(basePos);
   }
   layout();
@@ -688,7 +608,9 @@ export function buildPaint(scene, camera, opts) {
     const playable = !player || player.playable !== false;
     if (playable) {
       const d = Math.hypot(player.x - anchor.x, player.z - anchor.z);
-      if (near) near = d < REACH_OUT;
+      const sameLevel = Math.abs(camera.position.y - HALL.eye - anchor.foot) < 0.55;
+      if (!sameLevel) near = false;
+      else if (near) near = d < REACH_OUT;
       else near = d < REACH_IN;
     } else {
       near = false;
@@ -790,7 +712,7 @@ export function buildPaint(scene, camera, opts) {
     update,
     blocker() {
       if (armed) return null;
-      return { x: anchor.x, z: anchor.z, radius: 0.7 };
+      return { x: anchor.x, z: anchor.z, foot: anchor.foot, radius: 0.46 };
     },
     layout,
     selfTest,

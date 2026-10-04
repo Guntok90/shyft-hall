@@ -66,7 +66,8 @@ export function buildHall(scene) {
 }
 
 function skyDome() {
-  const geo = new THREE.SphereGeometry(140, 28, 16);
+  const radius = 360;
+  const geo = new THREE.SphereGeometry(radius, 32, 18);
   const pos = geo.attributes.position;
   const top = new THREE.Color(0x8eb6dc);
   const horizon = new THREE.Color(0xf3f1eb);
@@ -74,7 +75,7 @@ function skyDome() {
   const tmp = new THREE.Color();
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i) / 140;
+    const y = pos.getY(i) / radius;
     if (y > 0) tmp.copy(horizon).lerp(top, Math.min(1, y / 0.5));
     else tmp.copy(horizon).lerp(earth, Math.min(1, -y / 0.25));
     colors[i * 3] = tmp.r;
