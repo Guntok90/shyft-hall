@@ -7,7 +7,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { HALL, buildHall, loadMark } from "./hall.js";
 import { buildPaint } from "./paint.js";
 import { blockHost, connectVoice, loadHost } from "./host.js";
-import { createTalk } from "./voice.js";
+import { createTalk, VOICE_ENABLED } from "./voice.js";
 import { groundsSnapshot, updateGrounds } from "./grounds.js";
 import { footAt, levelSolids, standAt } from "./stairs.js";
 
@@ -553,11 +553,13 @@ try {
     loadMark(scene),
     loadHost(scene, { reduced, live: document.getElementById("host-line") }),
   ]);
-  talk = createTalk({
-    line: document.getElementById("talk-line"),
-    button: document.getElementById("talk"),
-  });
-  connectVoice((detail) => talk.toggle(detail));
+  if (VOICE_ENABLED) {
+    talk = createTalk({
+      line: document.getElementById("talk-line"),
+      button: document.getElementById("talk"),
+    });
+    connectVoice((detail) => talk.toggle(detail));
+  }
   paint = await buildPaint(scene, camera, {
     reduced,
     coarse,

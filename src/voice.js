@@ -1,3 +1,7 @@
+// Off until the public site has a voice relay. The local server still
+// has the route; flipping this back on restores click, T, and Talk.
+export const VOICE_ENABLED = false;
+
 const coarse = window.matchMedia("(pointer: coarse)").matches;
 const IDLE = coarse ? "Tap Talk" : "Press T to talk";
 const CLICK_LINE = "You clicked me. Brave. The logo has been spinning for attention all day, and you picked the one without a face.";

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { VOICE_ENABLED } from "./voice.js";
 
 // On the centerline, just outside the plinth, so she stands at the foot of the mark.
 // The model faces +Z, toward the door, and a visitor walking in meets the face.
@@ -112,20 +113,23 @@ export async function loadHost(scene, { reduced = false, live = null } = {}) {
   shadow.userData.noHit = true;
   group.add(shadow);
 
-  const caption = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.8, 0.3),
-    new THREE.MeshBasicMaterial({
-      map: lineTexture(LINE),
-      transparent: true,
-      depthWrite: false,
-      opacity: 0,
-      toneMapped: true,
-    }),
-  );
-  caption.rotation.x = -Math.PI / 2;
-  caption.position.set(0, 0.045, 1.45);
-  caption.userData.noHit = true;
-  group.add(caption);
+  let caption = null;
+  if (VOICE_ENABLED) {
+    caption = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.8, 0.3),
+      new THREE.MeshBasicMaterial({
+        map: lineTexture(LINE),
+        transparent: true,
+        depthWrite: false,
+        opacity: 0,
+        toneMapped: true,
+      }),
+    );
+    caption.rotation.x = -Math.PI / 2;
+    caption.position.set(0, 0.045, 1.45);
+    caption.userData.noHit = true;
+    group.add(caption);
+  }
   scene.add(group);
 
   const lamp = new THREE.SpotLight(0xfff6ee, 280, 16, 0.9, 0.7, 2);
@@ -156,8 +160,8 @@ export async function loadHost(scene, { reduced = false, live = null } = {}) {
       const next = distance < REACH;
       const step = reduced ? 1 : 1 - Math.exp(-dt * 6);
       const shown = next ? 1 - THREE.MathUtils.smoothstep(distance, SHOW, REACH) : 0;
-      caption.material.opacity += (shown - caption.material.opacity) * step;
-      if (live && next !== near) live.textContent = next ? LINE : "";
+      if (caption) caption.material.opacity += (shown - caption.material.opacity) * step;
+      if (VOICE_ENABLED && live && next !== near) live.textContent = next ? LINE : "";
       near = next;
 
       if (!head || reduced) return;
