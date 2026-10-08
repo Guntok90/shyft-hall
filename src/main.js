@@ -97,7 +97,6 @@ let dragY = 0;
 let ignoreLockJump = false;
 let mark = null;
 let paint = null;
-let recoil = 0;
 let lockFailed = false;
 let host = null;
 let talk = null;
@@ -318,12 +317,11 @@ function frame() {
   if (host) host.update(dt, camera.position);
   if (talk && host) talk.follow(host.near);
   if (paint) {
-    recoil = paint.update(dt, {
+    paint.update(dt, {
       x: camera.position.x,
       z: camera.position.z,
       playable: intro >= 1,
     });
-    if (intro >= 1) camera.rotation.x = pitch - recoil;
   }
   updateGrounds(dt, reduced);
   composer.render();

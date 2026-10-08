@@ -254,7 +254,6 @@ export async function buildPaint(scene, camera, opts) {
   let cooldown = 0;
   let heat = 0;
   let kickAmt = 0;
-  let recoil = 0;
   let draw = 0;
   let bob = 0;
   let flashLife = 0;
@@ -549,7 +548,6 @@ export async function buildPaint(scene, camera, opts) {
 
   function burst() {
     kickAmt = Math.min(1, kickAmt + 0.62);
-    recoil = Math.min(reduced ? 0 : 0.05, recoil + (reduced ? 0 : 0.011));
     flash.visible = true;
     flash.scale.setScalar(0.7 + Math.random() * 0.6);
     flash.material.color.set(PAINT[(Math.random() * PAINT.length) | 0]);
@@ -625,7 +623,6 @@ export async function buildPaint(scene, camera, opts) {
     if (armed) draw = Math.min(1, draw + dt / 0.42);
     const ease = draw * draw * (3 - 2 * draw);
     kickAmt *= Math.exp(-dt * 14);
-    recoil *= Math.exp(-dt * 9);
     heat = firing ? Math.min(1, heat + dt * 0.85) : Math.max(0, heat - dt * 1.3);
 
     if (playable && firing && armed) {
@@ -665,7 +662,6 @@ export async function buildPaint(scene, camera, opts) {
     kick.rotation.z = -kickAmt * 0.06;
 
     refreshHud();
-    return reduced ? 0 : recoil;
   }
 
   function selfTest() {
